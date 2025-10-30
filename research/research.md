@@ -1,6 +1,6 @@
 Strategy:
 - Customer row stored in numpy memmap, simulation happens in memory with object interactions, snapshots taken to PyArrow
-
+- Basically: Customer data is stored and manipulated within a table, object interactions happen within memory.
 Constants:
 Home station dictionary {"T1": "Central"}
 Data model and interactions:

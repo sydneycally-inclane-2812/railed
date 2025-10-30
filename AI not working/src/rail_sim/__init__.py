@@ -1,1 +1,0 @@
-# This file initializes the rail simulation package.
