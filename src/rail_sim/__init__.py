@@ -1,7 +1,7 @@
 """
 Railed Simulation Framework
 """
-
+from .logger import get_logger
 from .memmap_schema import MemmapAllocator, CUSTOMER_DTYPE
 from .path_table import PathTable
 from .customer_gen import CustomerGenerator
@@ -15,6 +15,7 @@ from .simulation import SimulationLoop, SimulationMetrics
 __version__ = "0.1.0"
 
 __all__ = [
+	'get_logger',
     'MemmapAllocator',
     'CUSTOMER_DTYPE',
     'PathTable',

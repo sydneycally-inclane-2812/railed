@@ -1,5 +1,8 @@
 import numpy as np
 from typing import List, Dict, Optional, Set
+from .logger import get_logger
+
+logger = get_logger()
 
 class Station:
     """Represents a railway station"""
@@ -25,10 +28,16 @@ class Station:
         
         # Optional: platform tracking
         self.platforms: Dict[int, List[int]] = {}  # platform_id -> [train_ids]
+        
+        logger.info(f"Station {station_id} ({name}) initialized: lines={line_codes}, capacity={theoretical_capacity}")
     
     def enqueue_passenger(self, customer_idx: int):
         """Add passenger to waiting queue"""
         self.waiting_passengers.append(customer_idx)
+        logger.debug(f"Station {self.name}: Passenger {customer_idx} added to queue (total waiting: {len(self.waiting_passengers)})")
+        
+        if len(self.waiting_passengers) > self.theoretical_capacity:
+            logger.warning(f"Station {self.name}: Queue size {len(self.waiting_passengers)} exceeds theoretical capacity {self.theoretical_capacity}")
     
     def dequeue_for_boarding(
         self, 
@@ -41,15 +50,19 @@ class Station:
         Filter by path/line compatibility
         """
         if not self.waiting_passengers:
+            logger.debug(f"Station {self.name}: No waiting passengers for train {train.id}")
             return np.array([], dtype=np.int64)
         
         waiting_arr = np.array(self.waiting_passengers, dtype=np.int64)
+        
+        logger.debug(f"Station {self.name}: Checking {len(waiting_arr)} passengers for train {train.id} (line {train.line_id})")
         
         # Filter passengers whose path includes this train's line
         eligible = []
         for idx in waiting_arr:
             path_id = memmap[idx]['path_id']
             if path_id == 0:
+                logger.debug(f"Station {self.name}: Passenger {idx} has no path assigned")
                 continue
             
             segments = path_table.expand(path_id)
@@ -62,9 +75,13 @@ class Station:
         
         eligible_arr = np.array(eligible, dtype=np.int64)
         
+        logger.info(f"Station {self.name}: {len(eligible_arr)} passengers eligible for train {train.id} out of {len(waiting_arr)} waiting")
+        
         # Remove from waiting list
         remaining = set(self.waiting_passengers) - set(eligible)
         self.waiting_passengers = list(remaining)
+        
+        logger.debug(f"Station {self.name}: {len(self.waiting_passengers)} passengers remain in queue")
         
         return eligible_arr
     
@@ -78,3 +95,4 @@ class Station:
         memmap[customer_idx]['current_station_id'] = self.station_id
         # Add to waiting queue
         self.enqueue_passenger(customer_idx)
+        logger.info(f"Station {self.name}: Passenger {customer_idx} transferring to line {next_line}")

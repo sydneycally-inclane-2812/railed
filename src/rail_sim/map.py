@@ -3,6 +3,9 @@ import networkx as nx
 from .line import Line
 from .station import Station
 from .path_table import PathTable
+from .logger import get_logger
+
+logger = get_logger()
 
 class Map:
     """Network graph and routing"""
@@ -15,17 +18,20 @@ class Map:
         
         # Build graph
         self.graph = nx.Graph()
+        logger.info("Map initialized")
     
     def add_line(self, line: Line):
         """Add a line to the map"""
         self.lines.append(line)
         self._rebuild_graph()
+        logger.info(f"Added line {line.line_code} to network")
     
     def add_station(self, station: Station):
         """Add a station to the map"""
         self.stations[station.station_id] = station
         self.station_lookup[station.name] = station
         self._rebuild_graph()
+        logger.info(f"Added station {station.station_id} ({station.name}) to network")
     
     def _rebuild_graph(self):
         """Rebuild network graph from lines"""
@@ -58,6 +64,8 @@ class Map:
                 weight='weight'
             )
             
+            logger.debug(f"Found path from {origin_id} to {dest_id}: {node_path}")
+            
             # Convert to segments
             segments = []
             for i in range(len(node_path) - 1):
@@ -75,6 +83,7 @@ class Map:
             return path_id
             
         except nx.NetworkXNoPath:
+            logger.error(f"No path found from station {origin_id} to {dest_id}")
             return 0  # No path found
     
     def assign_path_to_customer(self, customer_idx: int, memmap):

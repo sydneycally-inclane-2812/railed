@@ -1,5 +1,8 @@
 from typing import List, Dict, Optional
 from .train_gen import TrainGenerator
+from .logger import get_logger
+
+logger = get_logger()
 
 class Line:
     """Represents a railway line"""
@@ -77,5 +80,8 @@ class Line:
         for i, travel_time in enumerate(times):
             current_time += travel_time
             timetable.append((current_time, stations[i + 1]))
+        
+        logger.debug(f"Line {self.line_code}: Built timetable with {len(timetable)} stops, "
+                    f"direction={direction}, total_time={current_time - start_time:.1f}s")
         
         return timetable
