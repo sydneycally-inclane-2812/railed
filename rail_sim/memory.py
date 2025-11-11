@@ -98,3 +98,83 @@ class MemmapAllocator:
         cid = self.next_id
         self.next_id += 1
         return cid
+
+
+class MemoryAllocator:
+    """In-memory allocator for customer records (faster than memmap)"""
+    
+    def __init__(self, initial_capacity: int = 1_000_000):
+        self.capacity = initial_capacity
+        self.free_indices = []
+        self.next_id = 1
+        
+        logger.info(f"Initializing MemoryAllocator with capacity={initial_capacity} (in-memory)")
+        
+        # Create numpy array in memory
+        self.memmap = np.zeros(self.capacity, dtype=CUSTOMER_DTYPE)
+        logger.info(f"Created in-memory array with capacity={self.capacity}")
+    
+    def allocate_index(self) -> int:
+        """Get next available index"""
+        if self.free_indices:
+            idx = self.free_indices.pop()
+            logger.debug(f"Allocated index {idx} from free pool (pool size: {len(self.free_indices)})")
+            return idx
+        
+        # Find next free slot
+        for idx in range(self.capacity):
+            if self.memmap['id'][idx] == 0:
+                # Mark this slot as allocated by setting a non-zero id
+                self.memmap['id'][idx] = self.get_next_id()
+                logger.debug(f"Allocated new index {idx}")
+                return idx
+        
+        # Need to grow array
+        logger.warning(f"Memory capacity exceeded! Growing from {self.capacity} to {self.capacity * 2}")
+        self._grow()
+        return self.allocate_index()
+    
+    def allocate_indices(self, n: int) -> np.ndarray:
+        """Allocate multiple indices"""
+        logger.debug(f"Allocating {n} indices")
+        indices = []
+        for _ in range(n):
+            indices.append(self.allocate_index())
+        logger.debug(f"Successfully allocated {n} indices")
+        return np.array(indices, dtype=np.int64)
+    
+    def release_index(self, idx: int):
+        """Mark index as free for reuse"""
+        logger.debug(f"Releasing index {idx} to free pool")
+        self.memmap[idx] = 0  # Zero out the record
+        self.free_indices.append(idx)
+    
+    def flush(self):
+        """No-op for in-memory allocator (for API compatibility)"""
+        logger.debug("Flush called on in-memory allocator (no-op)")
+        pass
+    
+    def get_next_id(self) -> int:
+        """Get next customer ID"""
+        cid = self.next_id
+        self.next_id += 1
+        return cid
+    
+    def _grow(self):
+        """Double the capacity of the array"""
+        old_capacity = self.capacity
+        self.capacity *= 2
+        
+        logger.info(f"Growing array from {old_capacity} to {self.capacity}")
+        
+        # Create new larger array
+        new_array = np.zeros(self.capacity, dtype=CUSTOMER_DTYPE)
+        
+        # Copy old data
+        new_array[:old_capacity] = self.memmap
+        
+        # Replace old array
+        self.memmap = new_array
+        
+        logger.info(f"Successfully grew array to {self.capacity}")
+    

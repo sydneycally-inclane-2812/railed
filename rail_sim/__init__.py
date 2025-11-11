@@ -2,7 +2,7 @@
 Railed Simulation Framework
 """
 from .logger import get_logger
-from .memmap_schema import MemmapAllocator, CUSTOMER_DTYPE
+from .memory import MemmapAllocator, MemoryAllocator, CUSTOMER_DTYPE
 from .path_table import PathTable
 from .customer_gen import CustomerGenerator
 from .train import Train
@@ -17,6 +17,7 @@ __version__ = "0.1.0"
 __all__ = [
 	'get_logger',
     'MemmapAllocator',
+    'MemoryAllocator',
     'CUSTOMER_DTYPE',
     'PathTable',
     'CustomerGenerator',
