@@ -2,6 +2,7 @@ from typing import List, Dict, Optional
 import numpy as np
 from dataclasses import dataclass
 
+from .logger import get_logger
 from .memmap_schema import MemmapAllocator
 from .map import Map
 from .train import Train
@@ -40,15 +41,24 @@ class SimulationLoop:
         self.event_queue: List = []
         
         self.metrics_history: List[SimulationMetrics] = []
+        
+        logger = get_logger()
+        logger.info(f"SimulationLoop initialized: dt={dt}s, snapshot_interval={snapshot_interval} ticks")
     
     def add_customer_generator(self, gen: CustomerGenerator):
         """Register a customer generator"""
         self.customer_generators.append(gen)
+        logger = get_logger()
+        logger.info(f"Added customer generator for station {gen.station_id}")
     
     def step(self):
         """Execute one simulation tick"""
+        logger = get_logger()
         self.current_tick += 1
         self.current_time += self.dt
+        
+        if self.current_tick % 100 == 0:
+            logger.info(f"=== Tick {self.current_tick} | Time: {self.current_time:.1f}s ({self.current_time/3600:.2f}h) ===")
         
         # 1. Generate new customers
         new_passenger_indices = []
@@ -62,12 +72,15 @@ class SimulationLoop:
             )
             new_passenger_indices.extend(indices)
         
+        if len(new_passenger_indices) > 0:
+            logger.debug(f"Generated {len(new_passenger_indices)} new passengers")
+        
         # 2. Assign paths to new customers
         for idx in new_passenger_indices:
             self.map.assign_path_to_customer(idx, self.allocator.memmap)
             
             # Add to station queue
-            origin = self.allocator.memmap[idx]['origin_station_id']
+            origin = int(self.allocator.memmap[idx]['origin_station_id'])
             station = self.map.stations.get(origin)
             if station:
                 station.enqueue_passenger(idx)
@@ -95,18 +108,20 @@ class SimulationLoop:
         for train in self.active_trains:
             arrived = train.step(self.dt, self.current_time)
             
-            if arrived and train.current_station_id:
-                # Handle alighting
-                alighted = train.alight(self.allocator.memmap)
-                alighting_count += len(alighted)
+            # Handle boarding/alighting if train is at a station (either just arrived or dwelling)
+            if (arrived or train.dwell_remaining > 0) and train.current_station_id:
+                # Handle alighting (only on arrival)
+                if arrived:
+                    alighted = train.alight(self.allocator.memmap)
+                    alighting_count += len(alighted)
+                    
+                    # Update tap-off times
+                    if len(alighted) > 0:
+                        self.allocator.memmap[alighted]['tap_off_ts'] = self.current_time
                 
-                # Update tap-off times
-                if len(alighted) > 0:
-                    self.allocator.memmap[alighted]['tap_off_ts'] = self.current_time
-                
-                # Handle boarding
+                # Handle boarding (during any dwell period)
                 station = self.map.stations.get(train.current_station_id)
-                if station:
+                if station and train.dwell_remaining > 0:
                     eligible = station.dequeue_for_boarding(
                         train, 
                         self.allocator.memmap,
@@ -130,8 +145,13 @@ class SimulationLoop:
         metrics = self.collect_metrics(boarding_count, alighting_count)
         self.metrics_history.append(metrics)
         
+        if self.current_tick % 100 == 0:
+            logger.info(f"Metrics: {metrics.active_trains} trains, {metrics.waiting_passengers} waiting, "
+                       f"boarding_rate={metrics.boarding_rate:.2f}, alight_rate={metrics.alight_rate:.2f}")
+        
         # 7. Snapshot if needed
         if self.current_tick % self.snapshot_interval == 0:
+            logger.info(f"Taking snapshot at tick {self.current_tick}")
             self.snapshot()
         
         # 8. Process events (disruptions, etc.)
@@ -162,6 +182,7 @@ class SimulationLoop:
     
     def snapshot(self):
         """Create PyArrow snapshot"""
+        logger = get_logger()
         # Import here to avoid dependency if not needed
         try:
             import pyarrow as pa
@@ -171,6 +192,8 @@ class SimulationLoop:
             # Convert active customers to Arrow table
             active_mask = self.allocator.memmap['id'] > 0
             active_data = self.allocator.memmap[active_mask]
+            
+            logger.info(f"Creating snapshot with {len(active_data)} active customers")
             
             table = pa.table({
                 'id': pa.array(active_data['id']),
@@ -190,9 +213,11 @@ class SimulationLoop:
             filename = snapshot_dir / f'snapshot_tick_{self.current_tick}.parquet'
             pq.write_table(table, filename, compression='snappy')
             
+            logger.info(f"Snapshot saved: {filename}")
             print(f"Snapshot saved: {filename}")
             
         except ImportError:
+            logger.warning("PyArrow not installed, skipping snapshot")
             print("PyArrow not installed, skipping snapshot")
     
     def run(self, n_ticks: int):

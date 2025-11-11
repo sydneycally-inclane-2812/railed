@@ -1,5 +1,8 @@
 import numpy as np
 from typing import List, Tuple, Optional
+from .logger import get_logger
+
+logger = get_logger()
 
 class Train:
     """Represents a train moving along a line"""
@@ -26,13 +29,16 @@ class Train:
         self.timetable_idx = 0
         self.current_station_id: Optional[int] = None
         self.next_station_id: Optional[int] = None
-        self.dwell_remaining = 0.0
+        self.dwell_remaining = 30.0  # Start with initial dwell to allow boarding
         self.position_ratio = 0.0  # 0-1 between stations
         
         if timetable:
             self.current_station_id = timetable[0][1]
             if len(timetable) > 1:
                 self.next_station_id = timetable[1][1]
+        
+        logger.info(f"Train {train_id} created on line {line_id}: capacity={max_capacity}, "
+                   f"direction={direction}, {len(timetable)} stops, starting at station {self.current_station_id}")
     
     def step(self, dt: float, current_time: float) -> bool:
         """
@@ -62,11 +68,15 @@ class Train:
             self.current_station_id = next_station
             self.timetable_idx += 1
             
+            logger.info(f"Train {self.id} arrived at station {next_station} at time {current_time:.1f}")
+            
             # Set next station if not at end
             if self.timetable_idx < len(self.timetable) - 1:
                 self.next_station_id = self.timetable[self.timetable_idx + 1][1]
+                logger.debug(f"Train {self.id} next stop: station {self.next_station_id}")
             else:
                 self.next_station_id = None
+                logger.info(f"Train {self.id} reached terminal station {next_station}")
             
             # Start dwelling
             self.dwell_remaining = 30.0  # 30 second dwell time

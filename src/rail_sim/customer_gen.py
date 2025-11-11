@@ -1,6 +1,9 @@
 import numpy as np
 from typing import Callable, Optional, List
 from .memmap_schema import MemmapAllocator, CUSTOMER_DTYPE
+from .logger import get_logger
+
+logger = get_logger()
 
 class CustomerGenerator:
     """Generates customers and writes to memmap"""
@@ -16,6 +19,7 @@ class CustomerGenerator:
         self.station_id = station_id
         self.arrival_rate_profile = arrival_rate_profile
         self.rng = np.random.default_rng(seed)
+        logger.info(f"CustomerGenerator initialized for station {station_id} with seed={seed}")
     
     def generate_customers(
         self, 
@@ -32,7 +36,10 @@ class CustomerGenerator:
         n_arrivals = self.rng.poisson(rate * dt)
         
         if n_arrivals == 0:
+            logger.debug(f"Station {self.station_id}: No arrivals this tick (rate={rate:.2f})")
             return np.array([], dtype=np.int64)
+        
+        logger.debug(f"Station {self.station_id}: Generating {n_arrivals} customers (rate={rate:.2f}, dt={dt})")
         
         # Allocate indices
         indices = self.allocator.allocate_indices(n_arrivals)
@@ -56,6 +63,7 @@ class CustomerGenerator:
             self.allocator.memmap[idx]['total_travel_time'] = 0
             self.allocator.memmap[idx]['movement_speed'] = self.rng.uniform(1.0, 1.5)
         
+        logger.info(f"Station {self.station_id}: Created {n_arrivals} customers with indices {indices[:5]}{'...' if len(indices) > 5 else ''}")
         return indices
     
     def assign_path(self, customer_idx: int, path_id: int):

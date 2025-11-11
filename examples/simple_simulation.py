@@ -51,6 +51,7 @@ def main():
         theoretical_capacity=1500
     )
     
+    
     network.add_station(station_central)
     network.add_station(station_redfern)
     network.add_station(station_erskineville)
@@ -61,8 +62,8 @@ def main():
         line_code="T1",
         station_list=[1, 2, 3],
         time_between_stations=[120.0, 180.0],  # seconds
-        schedule={'headway': 600, 'service_hours': (6, 22), 'capacity': 800},
-        fleet_size=5,
+        schedule={'headway': 300, 'service_hours': (6, 22), 'capacity': 800},
+        fleet_size=10,
         bidirectional=True
     )
     

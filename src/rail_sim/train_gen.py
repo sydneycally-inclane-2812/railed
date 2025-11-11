@@ -1,5 +1,8 @@
 from typing import List, Dict, Set, Optional
 from dataclasses import dataclass
+from .logger import get_logger
+
+logger = get_logger()
 
 @dataclass
 class TrainSpawn:
@@ -28,6 +31,10 @@ class TrainGenerator:
         self.idle_pool: List[int] = []
         self.next_spawn_times: List[float] = []
         self.train_id_counter = 0
+        
+        logger.info(f"TrainGenerator for line {line_id}: fleet_size={fleet_size}, "
+                   f"headway={schedule_policy.get('headway', 600)}s, "
+                   f"service_hours={schedule_policy.get('service_hours', (0, 24))}")
     
     def tick(self, current_time: float) -> List[TrainSpawn]:
         """Determine if new trains should spawn"""
@@ -38,6 +45,7 @@ class TrainGenerator:
         service_start, service_end = self.schedule_policy.get('service_hours', (0, 24))
         
         if hour < service_start or hour >= service_end:
+            logger.debug(f"Line {self.line_id}: Outside service hours (hour={hour:.1f}, service={service_start}-{service_end})")
             return spawns
         
         # Check headway-based spawning
@@ -53,10 +61,14 @@ class TrainGenerator:
                     spawn = self._create_spawn_event(train_id, current_time)
                     spawns.append(spawn)
                     
+                    logger.info(f"Line {self.line_id}: Spawning train {train_id} at time {current_time:.1f} "
+                               f"(active: {len(self.active_trains)}/{self.fleet_size})")
+                    
                     # Schedule next spawn
                     if self.next_spawn_times:
                         self.next_spawn_times.pop(0)
                     self.next_spawn_times.append(current_time + headway)
+                    logger.debug(f"Line {self.line_id}: Next spawn scheduled at {current_time + headway:.1f}")
         
         return spawns
     
@@ -65,19 +77,24 @@ class TrainGenerator:
         if self.idle_pool:
             train_id = self.idle_pool.pop()
             self.active_trains.add(train_id)
+            logger.debug(f"Line {self.line_id}: Allocated train {train_id} from idle pool")
             return train_id
         
         if len(self.active_trains) < self.fleet_size:
             train_id = self._create_train_id()
             self.active_trains.add(train_id)
+            logger.debug(f"Line {self.line_id}: Created new train {train_id}")
             return train_id
         
+        logger.warning(f"Line {self.line_id}: Cannot allocate train, fleet at capacity ({self.fleet_size})")
         return None
     
     def release_train(self, train_id: int):
         """Return train to idle pool"""
         self.active_trains.discard(train_id)
         self.idle_pool.append(train_id)
+        logger.info(f"Line {self.line_id}: Train {train_id} released to idle pool "
+                   f"(active: {len(self.active_trains)}, idle: {len(self.idle_pool)})")
     
     def handle_direction_change(self, train_id: int):
         """Manage direction reversal at terminal"""
