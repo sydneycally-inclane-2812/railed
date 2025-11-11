@@ -4,6 +4,7 @@ Example: minimal simulation setup
 
 import sys
 import numpy as np
+import logging
 from pathlib import Path
 
 # Add src to path
@@ -64,7 +65,7 @@ def main():
         line_code="T1",
         station_list=[1, 2, 3],
         time_between_stations=[120.0, 180.0],  # seconds
-        schedule={'headway': 300, 'service_hours': (6, 22), 'capacity': 800},
+        schedule={'headway': 300, 'service_hours': (6, 22), 'capacity': 1000},
         fleet_size=10,
         bidirectional=True
     )
@@ -91,7 +92,8 @@ def main():
         memmap_allocator=allocator,
         map_network=network,
         dt=1.0,  # 1 second per tick
-        snapshot_interval=3600  # snapshot every hour (3600 ticks)
+        snapshot_interval=3600,  # snapshot every hour (3600 ticks)
+        log_level = logging.WARNING
     )
     
     # Set start time to 6 AM (within service hours)
