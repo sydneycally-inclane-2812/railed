@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 
 from .logger import get_logger
-from .memmap_schema import MemmapAllocator
+from .memory import MemmapAllocator, MemoryAllocator
 from .map import Map
 from .train import Train
 from .customer_gen import CustomerGenerator

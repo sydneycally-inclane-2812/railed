@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Callable, Optional, List
-from .memmap_schema import MemmapAllocator, CUSTOMER_DTYPE
+from .memory import MemmapAllocator, CUSTOMER_DTYPE
 from .logger import get_logger
 
 logger = get_logger()

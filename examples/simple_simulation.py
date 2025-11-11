@@ -7,10 +7,12 @@ import numpy as np
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 
 from rail_sim import (
     MemmapAllocator,
+    MemoryAllocator,
     CustomerGenerator,
     Station,
     Line,
@@ -24,7 +26,7 @@ def constant_arrival_rate(t):
 
 def main():
     # 1. Create memmap allocator
-    allocator = MemmapAllocator('e:/railed/data/passengers.dat', initial_capacity=100_000)
+    allocator = MemoryAllocator()
     
     # 2. Create map
     network = Map()
