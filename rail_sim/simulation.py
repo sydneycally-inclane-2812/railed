@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional
 import numpy as np
+import logging
 from dataclasses import dataclass
 
 from .logger import get_logger
@@ -23,10 +24,11 @@ class SimulationLoop:
     
     def __init__(
         self,
-        memmap_allocator: MemmapAllocator,
+        memmap_allocator: MemmapAllocator | MemoryAllocator,
         map_network: Map,
         dt: float = 1.0,  # seconds per tick
-        snapshot_interval: int = 3600  # snapshots every hour
+        snapshot_interval: int = 3600,  # snapshots every hour
+        log_level = logging.INFO
     ):
         self.allocator = memmap_allocator
         self.map = map_network
@@ -43,7 +45,9 @@ class SimulationLoop:
         self.metrics_history: List[SimulationMetrics] = []
         
         logger = get_logger()
+        logger.setLevel(log_level)
         logger.info(f"SimulationLoop initialized: dt={dt}s, snapshot_interval={snapshot_interval} ticks")
+        
     
     def add_customer_generator(self, gen: CustomerGenerator):
         """Register a customer generator"""
@@ -115,9 +119,15 @@ class SimulationLoop:
                     alighted = train.alight(self.allocator.memmap)
                     alighting_count += len(alighted)
                     
-                    # Update tap-off times
+                    # Update tap-off times and release indices
                     if len(alighted) > 0:
                         self.allocator.memmap[alighted]['tap_off_ts'] = self.current_time
+                        
+                        # Release memory indices for passengers who reached their destination
+                        for idx in alighted:
+                            self.allocator.release_index(idx)
+                        
+                        logger.debug(f"Released {len(alighted)} passenger indices back to free pool")
                 
                 # Handle boarding (during any dwell period)
                 station = self.map.stations.get(train.current_station_id)
