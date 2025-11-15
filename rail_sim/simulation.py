@@ -89,46 +89,67 @@ class SimulationLoop:
             if station:
                 station.enqueue_passenger(idx)
         
-        # 3. Spawn new trains
+        # 3. Make new trains (literature terminology)
         for line in self.map.lines:
-            spawns = line.train_generator.tick(self.current_time)
-            for spawn in spawns:
+            makes = line.train_generator.tick(self.current_time)
+            for make in makes:
                 # Build timetable
-                timetable = line.build_timetable(self.current_time, spawn.direction)
-                
+                timetable = line.build_timetable(self.current_time, make.direction)
+                print(f"[DEBUG] Creating Train {make.train_id} on line {line.line_id} at sim time {self.current_time}")
+                print(f"[DEBUG] Timetable for Train {make.train_id}: {timetable}")
                 train = Train(
-                    train_id=spawn.train_id,
+                    train_id=make.train_id,
                     line_id=line.line_id,
                     timetable=timetable,
-                    max_capacity=spawn.max_capacity,
-                    direction=spawn.direction
+                    max_capacity=make.max_capacity,
+                    direction=make.direction
                 )
                 self.active_trains.append(train)
         
         # 4. Update all trains
         boarding_count = 0
         alighting_count = 0
-        
+
+        # Debug: print queue at each station and train occupancy every 100 ticks
+        if self.current_tick % 100 == 1:
+            print(f"Tick {self.current_tick} (Time: {self.current_time:.1f}s): Station queues:")
+            for station_id, station in self.map.stations.items():
+                print(f"  Station {station.name} (ID {station_id}): {len(station.waiting_passengers)} waiting")
+
         for train in self.active_trains:
             arrived = train.step(self.dt, self.current_time)
-            
+
+            # Debug: print train occupancy every 100 ticks
+            if self.current_tick % 100 == 1:
+                print(f"    Train {train.id} on line {train.line_id} at station {train.current_station_id}: {train.current_capacity}/{train.max_capacity} passengers onboard, status: {train.status}")
+
             # Handle boarding/alighting if train is at a station (either just arrived or dwelling)
             if (arrived or train.dwell_remaining > 0) and train.current_station_id:
                 # Handle alighting (only on arrival)
                 if arrived:
                     alighted = train.alight(self.allocator.memmap)
                     alighting_count += len(alighted)
-                    
+
                     # Update tap-off times and release indices
                     if len(alighted) > 0:
                         self.allocator.memmap[alighted]['tap_off_ts'] = self.current_time
-                        
-                        # Release memory indices for passengers who reached their destination
                         for idx in alighted:
                             self.allocator.release_index(idx)
-                        
                         logger.debug(f"Released {len(alighted)} passenger indices back to free pool")
-                
+
+                    # If at terminal, reverse and reschedule
+                    if train.timetable_idx >= len(train.timetable) - 1:
+                        # Reverse direction
+                        train.reverse_direction()
+                        # Rebuild timetable for return trip
+                        for line in self.map.lines:
+                            if line.line_id == train.line_id:
+                                train.timetable = line.build_timetable(self.current_time, train.direction)
+                                break
+                        train.timetable_idx = 0
+                        train.status = 'in_service'
+                        train.dwell_remaining = 30.0  # dwell at terminal before departing
+                        continue
                 # Handle boarding (during any dwell period)
                 station = self.map.stations.get(train.current_station_id)
                 if station and train.dwell_remaining > 0:
@@ -137,11 +158,8 @@ class SimulationLoop:
                         self.allocator.memmap,
                         self.map.path_table
                     )
-                    
                     boarded = train.board(eligible, self.allocator.memmap)
                     boarding_count += len(boarded)
-                    
-                    # Update tap-on times
                     if len(boarded) > 0:
                         self.allocator.memmap[boarded]['tap_on_ts'] = self.current_time
         
@@ -233,15 +251,59 @@ class SimulationLoop:
     def run(self, n_ticks: int):
         """Run simulation for n ticks"""
         print(f"Starting simulation for {n_ticks} ticks...")
-        
+
         for _ in range(n_ticks):
             self.step()
-            
             if self.current_tick % 100 == 0:
                 print(f"Tick {self.current_tick}: "
                       f"{len(self.active_trains)} trains, "
                       f"{self.metrics_history[-1].waiting_passengers} waiting")
-        
+
         # Final flush
         self.allocator.flush()
         print("Simulation complete")
+
+        # Print aggregate summary table
+        print("\nSimulation Summary Table (Aggregates):")
+        metrics = self.metrics_history
+        if not metrics:
+            print("No metrics collected.")
+            return
+        import numpy as np
+        def col(arr, attr):
+            return np.array([getattr(m, attr) for m in arr])
+        summary = [
+            [
+                "Average",
+                np.mean(col(metrics, "boarding_rate")),
+                np.mean(col(metrics, "alight_rate")),
+                np.mean(col(metrics, "avg_wait_time")),
+                np.mean(col(metrics, "active_trains")),
+                np.mean(col(metrics, "waiting_passengers")),
+            ],
+            [
+                "Max",
+                np.max(col(metrics, "boarding_rate")),
+                np.max(col(metrics, "alight_rate")),
+                np.max(col(metrics, "avg_wait_time")),
+                np.max(col(metrics, "active_trains")),
+                np.max(col(metrics, "waiting_passengers")),
+            ],
+            [
+                "Min",
+                np.min(col(metrics, "boarding_rate")),
+                np.min(col(metrics, "alight_rate")),
+                np.min(col(metrics, "avg_wait_time")),
+                np.min(col(metrics, "active_trains")),
+                np.min(col(metrics, "waiting_passengers")),
+            ],
+        ]
+        headers = ["Stat", "Boarding/s", "Alight/s", "Avg Wait (s)", "Active Trains", "Waiting"]
+        try:
+            from tabulate import tabulate
+            print(tabulate(summary, headers=headers, tablefmt="github", floatfmt=".2f"))
+        except ImportError:
+            print("(Install 'tabulate' for prettier tables)")
+            print(" | ".join(headers))
+            for row in summary:
+                print(" | ".join(f"{v:.2f}" if isinstance(v, float) else str(v) for v in row))

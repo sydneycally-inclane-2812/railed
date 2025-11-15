@@ -19,28 +19,25 @@ class PathTable:
         Store a new path or return existing path_id
         segments: list of (line_code, from_station_id, to_station_id)
         """
+        #print(f"DEBUG: PathTable.plan called for {origin_id}->{dest_id} with segments: {segments}")
         # Create hash of path for deduplication
         path_hash = self._hash_path(segments)
-        
         if path_hash in self.path_hash_to_id:
             path_id = self.path_hash_to_id[path_hash]
-            logger.debug(f"Path from {origin_id} to {dest_id} already exists with id={path_id}")
+            #print(f"DEBUG: Path already exists with id={path_id}")
             return path_id
-        
         # New path
         path_id = self.next_path_id
         self.next_path_id += 1
         self.paths[path_id] = segments
         self.path_hash_to_id[path_hash] = path_id
-        
-        logger.info(f"Created new path {path_id}: {origin_id} -> {dest_id} with {len(segments)} segments")
-        logger.debug(f"Path {path_id} segments: {segments}")
-        
+        #print(f"DEBUG: Created new path {path_id}: {origin_id} -> {dest_id} with {len(segments)} segments: {segments}")
         return path_id
     
     def expand(self, path_id: int) -> Optional[List[Tuple[str, int, int]]]:
         """Get segments for a path_id"""
         result = self.paths.get(path_id)
+        #print(f"DEBUG: PathTable.expand({path_id}) -> {result}")
         if result is None:
             logger.warning(f"Path {path_id} not found in PathTable")
         else:

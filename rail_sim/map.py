@@ -56,6 +56,9 @@ class Map:
         Uses shortest path by travel time
         """
         try:
+            #print(f"DEBUG: Finding path from {origin_id} to {dest_id}")
+            #print(f"DEBUG: Graph nodes: {list(self.graph.nodes())}")
+            #print(f"DEBUG: Graph edges: {list(self.graph.edges(data=True))}")
             # Find shortest path
             node_path = nx.shortest_path(
                 self.graph, 
@@ -63,26 +66,23 @@ class Map:
                 dest_id, 
                 weight='weight'
             )
-            
-            logger.debug(f"Found path from {origin_id} to {dest_id}: {node_path}")
-            
+            #print(f"DEBUG: Found node path: {node_path}")
             # Convert to segments
             segments = []
             for i in range(len(node_path) - 1):
                 from_id = node_path[i]
                 to_id = node_path[i + 1]
-                
                 # Get line for this edge
                 edge_data = self.graph.get_edge_data(from_id, to_id)
                 line_code = edge_data['line']
-                
                 segments.append((line_code, from_id, to_id))
-            
+            #print(f"DEBUG: Segments for path: {segments}")
             # Store in path table
             path_id = self.path_table.plan(origin_id, dest_id, segments)
+            #print(f"DEBUG: Stored path_id {path_id} for {origin_id}->{dest_id}")
             return path_id
-            
         except nx.NetworkXNoPath:
+            #print(f"DEBUG: No path found from station {origin_id} to {dest_id}")
             logger.error(f"No path found from station {origin_id} to {dest_id}")
             return 0  # No path found
     
@@ -90,15 +90,9 @@ class Map:
         """Find and assign path to customer"""
         origin = int(memmap[customer_idx]['origin_station_id'])
         dest = int(memmap[customer_idx]['dest_station_id'])
-        
-        # Debug: print first assignment
-        if not hasattr(self, '_debug_printed'):
-            print(f"DEBUG: Assigning path from {origin} to {dest}")
-            print(f"DEBUG: Stations in network: {list(self.stations.keys())}")
-            print(f"DEBUG: Graph nodes: {list(self.graph.nodes())}")
-            self._debug_printed = True
-        
+        #print(f"DEBUG: Assigning path for customer {customer_idx} from {origin} to {dest}")
         path_id = self.find_path(origin, dest)
+        #print(f"DEBUG: Assigned path_id {path_id} to customer {customer_idx}")
         memmap[customer_idx]['path_id'] = path_id
     
     def get_transfer_options(self, station_id: int) -> List[str]:

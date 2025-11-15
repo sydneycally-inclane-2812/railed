@@ -57,6 +57,10 @@ class Train:
         
         # Check if at terminal
         if self.timetable_idx >= len(self.timetable) - 1:
+            # Set status to idle at terminal
+            if self.status != 'idle':
+                logger.info(f"Train {self.id} reached terminal and is now idle.")
+            self.status = 'idle'
             return False
         
         # Get current and next station times

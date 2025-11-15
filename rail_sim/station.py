@@ -56,7 +56,7 @@ class Station:
         waiting_arr = np.array(self.waiting_passengers, dtype=np.int64)
         
         logger.debug(f"Station {self.name}: Checking {len(waiting_arr)} passengers for train {train.id} (line {train.line_id})")
-        
+   
         # Filter passengers whose path includes this train's line
         eligible = []
         for idx in waiting_arr:

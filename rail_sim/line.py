@@ -5,8 +5,6 @@ from .logger import get_logger
 logger = get_logger()
 
 class Line:
-    """Represents a railway line"""
-    
     def __init__(
         self,
         line_id: str,
@@ -65,23 +63,38 @@ class Line:
         # Propagate to train generator
         pass
     
-    def build_timetable(self, start_time: float, direction: int = 1) -> List[tuple]:
-        """Build timetable for a train run"""
+    def build_timetable(self, start_time: float, direction: int = 1, min_interval: float = 10.0) -> List[tuple]:
+        """Build timetable for a train run, ensuring minimum interval between stops."""
         timetable = []
         current_time = start_time
-        
+
         stations = self.station_list if direction == 1 else list(reversed(self.station_list))
         times = self.time_between_stations if direction == 1 else list(reversed(self.time_between_stations))
-        
+
         # First station
         timetable.append((current_time, stations[0]))
-        
+
         # Subsequent stations
         for i, travel_time in enumerate(times):
-            current_time += travel_time
+            # Use the greater of travel_time and min_interval to ensure movement
+            interval = max(travel_time, min_interval)
+            current_time += interval
             timetable.append((current_time, stations[i + 1]))
-        
+
         logger.debug(f"Line {self.line_code}: Built timetable with {len(timetable)} stops, "
                     f"direction={direction}, total_time={current_time - start_time:.1f}s")
-        
+
         return timetable
+
+    def get_terminals_and_directions(self):
+        """
+        Return a list of (terminal_station_id, direction) pairs for both ends of the line.
+        direction=1 means forward (start to end), direction=-1 means reverse (end to start).
+        """
+        if not self.station_list or len(self.station_list) < 2:
+            return []
+        return [
+            (self.station_list[0], 1),    # Departures from first terminal, forward
+            (self.station_list[-1], -1)   # Departures from last terminal, reverse
+        ]
+    """Represents a railway line"""

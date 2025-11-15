@@ -5,8 +5,8 @@ from .logger import get_logger
 logger = get_logger()
 
 @dataclass
-class TrainSpawn:
-    """Represents a train spawn event"""
+class TrainMake:
+    """Represents a train make event"""
     train_id: int
     line_id: str
     direction: int
@@ -15,7 +15,7 @@ class TrainSpawn:
     max_capacity: int
 
 class TrainGenerator:
-    """Manages train spawning for a line"""
+    """Manages train making for a line"""
     
     def __init__(
         self,
@@ -26,51 +26,44 @@ class TrainGenerator:
         self.line_id = line_id
         self.fleet_size = fleet_size
         self.schedule_policy = schedule_policy
-        
+
         self.active_trains: Set[int] = set()
         self.idle_pool: List[int] = []
-        self.next_spawn_times: List[float] = []
         self.train_id_counter = 0
-        
+
+        # Track last departure time for each direction
+        self.last_departure_time = {1: -float('inf'), -1: -float('inf')}
+
         logger.info(f"TrainGenerator for line {line_id}: fleet_size={fleet_size}, "
                    f"headway={schedule_policy.get('headway', 600)}s, "
                    f"service_hours={schedule_policy.get('service_hours', (0, 24))}")
     
-    def tick(self, current_time: float) -> List[TrainSpawn]:
-        """Determine if new trains should spawn"""
-        spawns = []
-        
+    def tick(self, current_time: float) -> List[TrainMake]:
+        """Determine if new trains should be made, enforcing headway for both directions."""
+        makes = []
+
         # Check service hours
         hour = (current_time / 3600) % 24
         service_start, service_end = self.schedule_policy.get('service_hours', (0, 24))
-        
+
         if hour < service_start or hour >= service_end:
             logger.debug(f"Line {self.line_id}: Outside service hours (hour={hour:.1f}, service={service_start}-{service_end})")
-            return spawns
-        
-        # Check headway-based spawning
+            return makes
+
         headway = self.schedule_policy.get('headway', 600)  # seconds
-        
-        # Simple spawning: check if we need more trains
-        if len(self.active_trains) < self.fleet_size:
-            # Check if enough time since last spawn
-            if not self.next_spawn_times or current_time >= self.next_spawn_times[0]:
-                # Create spawn event
-                train_id = self.allocate_train()
-                if train_id is not None:
-                    spawn = self._create_spawn_event(train_id, current_time)
-                    spawns.append(spawn)
-                    
-                    logger.info(f"Line {self.line_id}: Spawning train {train_id} at time {current_time:.1f} "
-                               f"(active: {len(self.active_trains)}/{self.fleet_size})")
-                    
-                    # Schedule next spawn
-                    if self.next_spawn_times:
-                        self.next_spawn_times.pop(0)
-                    self.next_spawn_times.append(current_time + headway)
-                    logger.debug(f"Line {self.line_id}: Next spawn scheduled at {current_time + headway:.1f}")
-        
-        return spawns
+
+        # Try to make a train in each direction, if enough time has passed since last departure
+        for direction in [1, -1]:
+            if len(self.active_trains) < self.fleet_size:
+                if current_time - self.last_departure_time[direction] >= headway:
+                    train_id = self.allocate_train()
+                    if train_id is not None:
+                        make = self._create_make_event(train_id, current_time, direction)
+                        makes.append(make)
+                        self.last_departure_time[direction] = current_time
+                        logger.info(f"Line {self.line_id}: Making train {train_id} at time {current_time:.1f} direction {direction} "
+                                    f"(active: {len(self.active_trains)}/{self.fleet_size})")
+        return makes
     
     def allocate_train(self) -> Optional[int]:
         """Get train ID from pool or create new"""
@@ -106,14 +99,12 @@ class TrainGenerator:
         self.train_id_counter += 1
         return int(f"{hash(self.line_id) % 1000}{self.train_id_counter:04d}")
     
-    def _create_spawn_event(self, train_id: int, current_time: float) -> TrainSpawn:
-        """Create spawn event with timetable"""
-        # Simplified: create basic timetable
-        # In real implementation, use Line.timetable
-        return TrainSpawn(
+    def _create_make_event(self, train_id: int, current_time: float, direction: int = 1) -> TrainMake:
+        """Create make event with timetable and direction"""
+        return TrainMake(
             train_id=train_id,
             line_id=self.line_id,
-            direction=1,
+            direction=direction,
             depart_time=current_time,
             timetable=[],  # To be filled by Line
             max_capacity=self.schedule_policy.get('capacity', 1000)
