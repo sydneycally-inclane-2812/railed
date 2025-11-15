@@ -1,5 +1,8 @@
+# Ignore Python virtual environment
+venv/
+railed/venv/
 /.venv/
 /.temp/
 __pycache__/
 **/*log.txt
-/data/
+/data/. 
