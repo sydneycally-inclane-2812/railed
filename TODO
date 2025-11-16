@@ -1,0 +1,8 @@
+- Fix the duplicated trains
+- Implement/fix peak hour distributions
+- Implement full Sydney system
+
+Low Priority
+- Add delays
+- Add real-time visualization
+- Utilize multithreading?

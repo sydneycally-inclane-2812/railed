@@ -64,8 +64,8 @@ def main():
         line_id="T1",
         line_code="T1",
         station_list=[1, 2, 3],
-        time_between_stations=[80.0, 100.0],  # seconds
-        schedule={'headway': 300, 'service_hours': (6, 22), 'capacity': 1000},
+        time_between_stations=[60.0, 120.0],  # seconds
+        schedule={'headway': 180, 'service_hours': (6, 22), 'capacity': 1000},
         fleet_size=4,
         bidirectional=True
     )
