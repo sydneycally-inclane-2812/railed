@@ -1,6 +1,5 @@
 # Ignore Python virtual environment
 venv/
-railed/venv/
 /.venv/
 /.temp/
 __pycache__/
