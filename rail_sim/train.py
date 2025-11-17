@@ -10,7 +10,7 @@ class Train:
     def __init__(
         self,
         train_id: int,
-        line_id: str,
+        line_id: str | None,
         timetable: List[Tuple[float, int]],  # [(arrival_time, station_id), ...]
         max_capacity: int,
         direction: int = 1,

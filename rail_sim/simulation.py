@@ -56,7 +56,51 @@ class SimulationLoop:
         logger.info(f"Added customer generator for station {gen.station_id}")
     
     def step(self):
-        """Execute one simulation tick"""
+        """
+        Execute one simulation tick
+        
+        Procedure:
+        1. **Increment Time**
+		- Advance tick counter and simulation time by `dt`
+		- Log progress every 100 ticks
+
+		2. **Generate New Passengers**
+		- Each customer generator creates new passengers at their station
+		- Passengers are assigned random destinations from available stations
+
+		3. **Path Assignment**
+		- Compute shortest path for each new passenger (using Dijkstra)
+		- Add passenger to their origin station's queue
+
+		4. **Train Creation ("Makes")**
+		- Check each line's train generator for scheduled departures
+		- Build timetable for new trains
+		- Add new trains to active fleet
+
+		5. **Train Updates**
+		- Each train advances by `dt` seconds
+		- **On Arrival at Station:**
+			- Passengers alight if destination reached
+			- Released passengers have tap-off time recorded and indices freed
+			- If at terminal: reverse direction, rebuild return timetable
+		- **During Dwell Period:**
+			- Station dequeues eligible passengers (those whose path uses this train/line)
+			- Train boards passengers up to capacity
+			- Boarded passengers get tap-on timestamp
+
+		6. **Update Waiting Times**
+		- Increment `total_wait_time` for all passengers still in state 0 (waiting)
+
+		7. **Collect Metrics**
+		- Compute boarding/alighting rates, average wait time, train count, waiting passenger count
+		- Append to metrics history
+
+		8. **Snapshot (Periodic)**
+		- Every `snapshot_interval` ticks, export active passengers to Parquet file
+
+		9. **Process Events**
+		- Handle disruptions/special events (currently unimplemented)
+        """
         logger = get_logger()
         self.current_tick += 1
         self.current_time += self.dt

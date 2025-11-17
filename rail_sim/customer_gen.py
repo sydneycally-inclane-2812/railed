@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Callable, Optional, List
-from .memory import MemmapAllocator, CUSTOMER_DTYPE
+from .memory import MemmapAllocator, MemoryAllocator, CUSTOMER_DTYPE
 from .logger import get_logger
 
 logger = get_logger()
@@ -10,7 +10,7 @@ class CustomerGenerator:
     
     def __init__(
         self, 
-        allocator: MemmapAllocator,
+        allocator: MemmapAllocator | MemoryAllocator,
         station_id: int,
         arrival_rate_profile: Callable[[float], float],
         seed: Optional[int] = None
