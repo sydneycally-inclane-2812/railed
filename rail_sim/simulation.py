@@ -67,8 +67,11 @@ class SimulationLoop:
         # 1. Generate new customers
         new_passenger_indices = []
         for gen in self.customer_generators:
-            # Get all stations as possible destinations (simplified)
-            destinations = list(self.map.stations.keys())
+            # Exclude the origin station to avoid zero-length trips
+            destinations = [sid for sid in self.map.stations.keys() if sid != gen.station_id]
+            if not destinations:
+                logger.warning(f"No valid destinations for station {gen.station_id}; skipping generation")
+                continue
             indices = gen.generate_customers(
                 self.current_time, 
                 self.dt,
