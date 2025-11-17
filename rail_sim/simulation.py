@@ -35,6 +35,7 @@ class SimulationLoop:
 		self.map = map_network
 		self.dt = dt
 		self.snapshot_interval = snapshot_interval
+		self.train_dedup = train_dedup
 		
 		self.current_tick = 0
 		self.current_time = 0.0
@@ -146,6 +147,33 @@ class SimulationLoop:
 			for make in makes:
 				# Build timetable
 				timetable = line.build_timetable(self.current_time, make.direction)
+				
+				# Check for duplicate trains (same line, direction, and first station)
+				if self.train_dedup != "disabled" and len(timetable) > 0:
+					first_station = timetable[0][1]  # (time, station_id)
+					duplicate_found = False
+					
+					for existing_train in self.active_trains:
+						# Check if train is on same line, direction, and heading to same first station
+						if (existing_train.line_id == line.line_id and 
+							existing_train.direction == make.direction and
+							len(existing_train.timetable) > 0):
+							# Check if existing train is at or heading to the same station
+							if existing_train.current_station_id == first_station or existing_train.next_station_id == first_station:
+								duplicate_found = True
+								break
+					
+					if duplicate_found:
+						if self.train_dedup == "warning":
+							logger.warning(f"Duplicate train detected: Train {make.train_id} on line {line.line_id} "
+										   f"direction {make.direction} to station {first_station} (proceeding anyway)")
+							
+						elif self.train_dedup == "enabled":
+							logger.info(f"Skipping duplicate train: Train {make.train_id} on line {line.line_id} "
+									    f"direction {make.direction} to station {first_station}")
+							
+							continue  # Skip spawning this train
+				
 				print(f"[DEBUG] Creating Train {make.train_id} on line {line.line_id} at sim time {self.current_time}")
 				print(f"[DEBUG] Timetable for Train {make.train_id}: {timetable}")
 				train = Train(
