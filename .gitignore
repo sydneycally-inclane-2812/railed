@@ -4,4 +4,4 @@ venv/
 /.temp/
 __pycache__/
 **/*log.txt
-/data/. 
+/data/

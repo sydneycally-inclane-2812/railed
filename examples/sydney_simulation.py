@@ -85,8 +85,7 @@ def main():
         map_network=network,
         dt=1.0,  # 1 second per tick
         snapshot_interval=3600,  # snapshot every hour (3600 ticks)
-        log_level=logging.ERROR,
-        train_fleet=train_fleet
+        log_level=logging.ERROR
     )
 
     # Set start time to 6 AM (within service hours)

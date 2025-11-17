@@ -136,7 +136,7 @@ class SydneyNetwork:
                 line_code="T1",
                 station_list=[1, 2, 5, 6, 7, 10, 11, 13, 14],
                 time_between_stations=[120, 180, 300, 400, 180, 120, 150, 200],
-                schedule={'headway': 300, 'service_hours': (5, 23), 'capacity': 1000},
+                schedule={'headway': sum([120, 180, 300, 400, 180, 120, 150, 200]), 'service_hours': (5, 23), 'capacity': 1000},
                 fleet_size=15,
                 bidirectional=True
             ),
@@ -145,7 +145,7 @@ class SydneyNetwork:
                 line_code="T2",
                 station_list=[1, 4, 5, 10, 11, 12],
                 time_between_stations=[180, 240, 180, 120, 100],
-                schedule={'headway': 400, 'service_hours': (5, 23), 'capacity': 900},
+                schedule={'headway': sum([180, 240, 180, 120, 100]), 'service_hours': (5, 23), 'capacity': 900},
                 fleet_size=10,
                 bidirectional=True
             ),
@@ -154,7 +154,7 @@ class SydneyNetwork:
                 line_code="T9",
                 station_list=[1, 5, 13, 14, 15],
                 time_between_stations=[200, 300, 250, 180],
-                schedule={'headway': 350, 'service_hours': (5, 23), 'capacity': 800},
+                schedule={'headway': sum([200, 300, 250, 180]), 'service_hours': (5, 23), 'capacity': 800},
                 fleet_size=8,
                 bidirectional=True
             )
