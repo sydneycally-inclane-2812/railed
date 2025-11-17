@@ -29,13 +29,15 @@ class SimulationLoop:
 		dt: float = 1.0,  # seconds per tick
 		snapshot_interval: int = 3600,  # snapshots every hour
 		log_level = logging.INFO,
-		train_dedup: Literal["disabled", "warning", "enabled"] = "disabled"
+		train_dedup: Literal["disabled", "warning", "enabled"] = "disabled",
+		min_headway: float = 60.0  # minimum seconds between trains at same station
 	):
 		self.allocator = memmap_allocator
 		self.map = map_network
 		self.dt = dt
 		self.snapshot_interval = snapshot_interval
 		self.train_dedup = train_dedup
+		self.min_headway = min_headway
 		
 		self.current_tick = 0
 		self.current_time = 0.0
@@ -43,6 +45,9 @@ class SimulationLoop:
 		self.active_trains: List[Train] = []
 		self.customer_generators: List[CustomerGenerator] = []
 		self.event_queue: List = []
+		
+		# Track last arrival time at each station for each line+direction
+		self.last_arrival_times: Dict[tuple, float] = {}  # (line_id, direction, station_id) -> time
 		
 		self.metrics_history: List[SimulationMetrics] = []
 		
@@ -148,31 +153,42 @@ class SimulationLoop:
 				# Build timetable
 				timetable = line.build_timetable(self.current_time, make.direction)
 				
-				# Check for duplicate trains (same line, direction, and first station)
+				# Check for trains arriving too close together at stations
 				if self.train_dedup != "disabled" and len(timetable) > 0:
-					first_station = timetable[0][1]  # (time, station_id)
-					duplicate_found = False
+					too_close = False
+					conflict_station = None
+					conflict_time_gap = None
 					
-					for existing_train in self.active_trains:
-						# Check if train is on same line, direction, and heading to same first station
-						if (existing_train.line_id == line.line_id and 
-							existing_train.direction == make.direction and
-							len(existing_train.timetable) > 0):
-							# Check if existing train is at or heading to the same station
-							if existing_train.current_station_id == first_station or existing_train.next_station_id == first_station:
-								duplicate_found = True
+					# Check each station in the timetable
+					for scheduled_time, station_id in timetable:
+						key = (line.line_id, make.direction, station_id)
+						last_arrival = self.last_arrival_times.get(key)
+						
+						if last_arrival is not None:
+							time_gap = scheduled_time - last_arrival
+							if 0 < time_gap < self.min_headway:
+								too_close = True
+								conflict_station = station_id
+								conflict_time_gap = time_gap
 								break
 					
-					if duplicate_found:
+					if too_close:
 						if self.train_dedup == "warning":
-							logger.warning(f"Duplicate train detected: Train {make.train_id} on line {line.line_id} "
-										   f"direction {make.direction} to station {first_station} (proceeding anyway)")
-							
+							logger.warning(f"Train {make.train_id} on line {line.line_id} direction {make.direction} "
+										   f"arrives at station {conflict_station} only {conflict_time_gap:.1f}s after previous train "
+										   f"(min_headway={self.min_headway:.1f}s) - proceeding anyway")
+							print(f"[WARNING] Train {make.train_id}: headway violation at station {conflict_station} ({conflict_time_gap:.1f}s < {self.min_headway:.1f}s)")
 						elif self.train_dedup == "enabled":
-							logger.info(f"Skipping duplicate train: Train {make.train_id} on line {line.line_id} "
-									    f"direction {make.direction} to station {first_station}")
-							
+							logger.info(f"Skipping train {make.train_id} on line {line.line_id} direction {make.direction}: "
+									    f"would arrive at station {conflict_station} only {conflict_time_gap:.1f}s after previous train "
+									    f"(min_headway={self.min_headway:.1f}s)")
+							print(f"[DEDUP] Skipped train {make.train_id}: headway violation at station {conflict_station} ({conflict_time_gap:.1f}s < {self.min_headway:.1f}s)")
 							continue  # Skip spawning this train
+					
+					# Update last arrival times for this train's timetable
+					for scheduled_time, station_id in timetable:
+						key = (line.line_id, make.direction, station_id)
+						self.last_arrival_times[key] = scheduled_time
 				
 				print(f"[DEBUG] Creating Train {make.train_id} on line {line.line_id} at sim time {self.current_time}")
 				print(f"[DEBUG] Timetable for Train {make.train_id}: {timetable}")
@@ -200,7 +216,7 @@ class SimulationLoop:
 
 			# Debug: print train occupancy every 100 ticks
 			if self.current_tick % 100 == 1:
-				print(f"    Train {train.id} on line {train.line_id} at station {train.current_station_id}: {train.current_capacity}/{train.max_capacity} passengers onboard, status: {train.status}")
+				print(f"    Train {train.id} on line {train.line_id} at station {train.current_station_id}, direction {train.direction}: {train.current_capacity}/{train.max_capacity} passengers onboard, status: {train.status}")
 
 			# Handle boarding/alighting if train is at a station (either just arrived or dwelling)
 			if (arrived or train.dwell_remaining > 0) and train.current_station_id:
@@ -216,8 +232,13 @@ class SimulationLoop:
 							self.allocator.release_index(idx)
 						logger.debug(f"Released {len(alighted)} passenger indices back to free pool")
 
-					# If at terminal, reverse and reschedule
+					# If at terminal, reverse and reschedule (only if train is still in service)
 					if train.timetable_idx >= len(train.timetable) - 1:
+						# Check if train went idle - if so, don't force it back to service
+						if train.status == 'idle':
+							logger.info(f"Train {train.id} is idle at terminal, not reversing")
+							continue
+						
 						# Reverse direction
 						train.reverse_direction()
 						# Rebuild timetable for return trip

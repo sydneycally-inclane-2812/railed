@@ -1,6 +1,7 @@
 """
 Test case: Overlapping headway with departure time
-- This causes
+- This causes the train that spawn after to have no customers
+- This aims to help fix any bugs related to this.
 """
 
 import sys
@@ -94,9 +95,10 @@ def main():
         map_network=network,
         dt=1.0,  # 1 second per tick
         snapshot_interval=3600,  # snapshot every hour (3600 ticks)
-        log_level = logging.ERROR,
-        train_dedup="enabled"
-		
+        log_level = logging.WARNING,
+        train_dedup="enabled",
+        
+
     )
     
     # Set start time to 6 AM (within service hours)
@@ -149,7 +151,7 @@ def main():
     #     sim.step()
     
     print("\n=== Running full simulation ===")
-    sim.run(n_ticks=3000)  # Run remaining ticks
+    sim.run(n_ticks=200)  # Run remaining ticks
     
     print("\nSimulation complete!")
     print(f"Final metrics: {sim.metrics_history[-1]}")

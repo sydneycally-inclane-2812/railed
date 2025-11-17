@@ -31,6 +31,7 @@ class Train:
         self.next_station_id: Optional[int] = None
         self.dwell_remaining = 30.0  # Start with initial dwell to allow boarding
         self.position_ratio = 0.0  # 0-1 between stations
+        self.consecutive_empty_stations = 0  # Track how many stations visited with no passengers
         
         if timetable:
             self.current_station_id = timetable[0][1]
@@ -71,6 +72,14 @@ class Train:
         if current_time >= next_arrival:
             self.current_station_id = next_station
             self.timetable_idx += 1
+            
+            # Track empty train running
+            if self.current_capacity == 0:
+                self.consecutive_empty_stations += 1
+                if self.consecutive_empty_stations > 2:
+                    logger.warning(f"Train {self.id} has been running empty for {self.consecutive_empty_stations} consecutive stations")
+            else:
+                self.consecutive_empty_stations = 0  # Reset counter when train has passengers
             
             logger.info(f"Train {self.id} arrived at station {next_station} at time {current_time:.1f}")
             
@@ -149,6 +158,7 @@ class Train:
         """Flip direction and reset timetable pointer"""
         self.direction *= -1
         self.timetable_idx = 0
+        self.consecutive_empty_stations = 0  # Reset empty counter on direction change
         # Reverse timetable
         self.timetable = list(reversed(self.timetable))
         if self.timetable:
