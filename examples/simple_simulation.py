@@ -1,5 +1,6 @@
 """
-Example: minimal simulation setup
+Test case: Overlapping headway with departure time
+- This causes
 """
 
 import sys
@@ -146,10 +147,12 @@ def main():
     #     sim.step()
     
     print("\n=== Running full simulation ===")
-    sim.run(n_ticks=2990)  # Run remaining ticks
+    sim.run(n_ticks=10000)  # Run remaining ticks
     
     print("\nSimulation complete!")
     print(f"Final metrics: {sim.metrics_history[-1]}")
 
 if __name__ == "__main__":
     main()
+    
+#test
