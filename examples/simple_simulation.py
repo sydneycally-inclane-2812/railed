@@ -24,7 +24,7 @@ from rail_sim import (
 
 def constant_arrival_rate(t):
     """Constant arrival rate function"""
-    return 0.2  # 1 customer per second = 60 per minute
+    return 1  # 1 customer per second = 60 per minute
 
 def main():
     # 1. Create memmap allocator
@@ -66,7 +66,7 @@ def main():
         line_code="T1",
         station_list=[1, 2, 3],
         time_between_stations=[60.0, 120.0],  # seconds
-        schedule={'headway': 180, 'service_hours': (6, 22), 'capacity': 1000},
+        schedule={'headway': 200, 'service_hours': (6, 22), 'capacity': 1000},
         fleet_size=4,
         bidirectional=True
     )
@@ -147,7 +147,7 @@ def main():
     #     sim.step()
     
     print("\n=== Running full simulation ===")
-    sim.run(n_ticks=10000)  # Run remaining ticks
+    sim.run(n_ticks=3000)  # Run remaining ticks
     
     print("\nSimulation complete!")
     print(f"Final metrics: {sim.metrics_history[-1]}")
