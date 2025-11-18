@@ -54,7 +54,7 @@ def main():
                 train_id=train_id,
                 line_id=None,  # Not assigned yet
                 timetable=[],
-                max_capacity=1000,  # or your preferred capacity
+                max_capacity=400,  # or your preferred capacity
                 direction=1,
                 status='idle'
             )
@@ -146,7 +146,7 @@ def main():
     # Visualize the network map
     try:
         from rail_sim.draw_map import DrawMap
-        DrawMap().draw(network)
+        DrawMap(layout = 'spring').draw(network)
     except Exception as e:
         print(f"Map visualization failed: {e}")
 

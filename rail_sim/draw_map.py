@@ -2,9 +2,21 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 class DrawMap:
-    def __init__(self, show_labels=True, figsize=(8, 6)):
+    def __init__(self, show_labels=True, figsize=(8, 6), layout='kamada_kawai'):
+        """
+        Initialize map drawer.
+        
+        layout options:
+        - 'kamada_kawai': Force-directed, good for minimizing edge crossings (default)
+        - 'planar': Attempts planar layout (no crossings) if graph is planar
+        - 'spring': Force-directed with springs (can be messy)
+        - 'circular': Nodes in a circle
+        - 'shell': Concentric circles
+        - 'spectral': Uses graph Laplacian eigenvectors
+        """
         self.show_labels = show_labels
         self.figsize = figsize
+        self.layout = layout
 
     def draw(self, map_obj):
         """
@@ -13,7 +25,26 @@ class DrawMap:
         Each line is colored uniquely.
         """
         G = map_obj.graph
-        pos = nx.spring_layout(G, seed=42)  # You can use a custom layout if you have coordinates
+        
+        # Choose layout algorithm
+        if self.layout == 'kamada_kawai':
+            pos = nx.kamada_kawai_layout(G)
+        elif self.layout == 'planar':
+            if nx.is_planar(G):
+                pos = nx.planar_layout(G)
+            else:
+                print("Graph is not planar, falling back to kamada_kawai")
+                pos = nx.kamada_kawai_layout(G)
+        elif self.layout == 'spring':
+            pos = nx.spring_layout(G, seed=42, k=0.5, iterations=50)
+        elif self.layout == 'circular':
+            pos = nx.circular_layout(G)
+        elif self.layout == 'shell':
+            pos = nx.shell_layout(G)
+        elif self.layout == 'spectral':
+            pos = nx.spectral_layout(G)
+        else:
+            pos = nx.kamada_kawai_layout(G)  # Default
         plt.figure(figsize=self.figsize)
 
         # Get all line codes for coloring
