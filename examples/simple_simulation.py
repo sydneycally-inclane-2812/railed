@@ -26,6 +26,16 @@ def constant_arrival_rate(t):
     """Constant arrival rate function"""
     return 1  # 1 customer per second = 60 per minute
 
+def peaky_arrival_rate(t):
+    scale = 10
+    morn_aft_scale = 4
+    min = 4
+    
+    power = -1/morn_aft_scale
+    f = lambda x: scale * x ** power * np.abs(np.sin(x)) + min
+    time_of_day = (t % 86400) / 86400  # seconds in a day
+    return f(time_of_day * np.pi * 2) # scale it to 2pi for 2 peaks a day 
+
 def main():
     # 1. Create memmap allocator
     allocator = MemoryAllocator()

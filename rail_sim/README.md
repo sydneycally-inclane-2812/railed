@@ -3,12 +3,14 @@
 ## File Map
 
 ### Core Data Layer
-- **`memmap_schema.py`** - Customer data storage and allocation
+- **`memory.py`** - Customer data storage and allocation
   - `CUSTOMER_DTYPE`: NumPy structured dtype with 13 fields (id, origin, dest, state, timestamps, etc.)
   - `MemmapAllocator`: Manages file-backed columnar storage for customer records
-    - Methods: `allocate_index()`, `allocate_indices()`, `release_index()`, `flush()`
+    - Methods: `allocate_index()`, `allocate_indices()`, `release_index()`, `flush()`, `get_next_id()`
     - Handles capacity management and free index pooling
-[TODO]: Add in-memory mode to improve performance
+  - `MemoryAllocator`: In-memory variant for improved performance
+    - Same interface as MemmapAllocator but uses numpy array instead of memmap
+    - Supports dynamic growth via `_grow()` method
 
 ### Routing & Path Management
 - **`path_table.py`** - Path caching and deduplication
@@ -21,8 +23,12 @@
 - **`customer_gen.py`** - Passenger arrival simulation
   - `CustomerGenerator`: Generates new customers with Poisson arrivals
     - `generate_customers(t, dt, destinations)`: Creates new passengers and writes to memmap
+    - `assign_path(customer_idx, path_id)`: Assign computed path to customer
     - Configurable arrival rate profile function
     - Assigns origin, destination, spawn time, and initial state
+- **`arrival_rate_profile.py`** - Arrival rate profile functions
+  - `constant_arrival(rate)`: Returns constant arrival rate function
+  - `daily_peak_arrival(base, peak, peak_hour, spread)`: Returns time-varying arrival rate with peak hours
 
 ### Simulation Entities
 
@@ -45,20 +51,25 @@
 
 #### Fleet Management
 - **`train_gen.py`** - Train spawning and scheduling
-  - `TrainSpawn`: Dataclass for spawn events (train_id, line_id, direction, depart_time, capacity)
+  - `TrainMake`: Dataclass for spawn events (train_id, line_id, direction, depart_time, capacity)
   - `TrainGenerator`: Manages train fleet for a line
     - Attributes: fleet_size, schedule_policy, active_trains set, idle_pool
     - `tick(current_time)`: Determine if new trains should spawn based on headway and service hours
     - `allocate_train()`: Get train from pool or create new if under fleet limit
     - `release_train(train_id)`: Return train to idle pool for reuse
+    - `handle_direction_change(train_id)`: Handle turnaround at terminals
+    - `_create_make_event(train_id, current_time, direction)`: Create train spawn event
 
 #### Line Configuration
 - **`line.py`** - Railway line topology and schedules
   - `Line`: Represents a transit line
     - Attributes: line_id, line_code, station_list, travel_times, schedule, fleet_size, train_generator
-    - `build_timetable(start_time, direction)`: Generate arrival times for each station
+    - `build_timetable(start_time, direction, min_interval)`: Generate arrival times for each station
     - `get_next_station(current_id, direction)`: Navigate along line topology
     - `get_travel_time(from_id, to_id)`: Lookup segment travel time
+    - `update_fleet(new_size)`: Adjust fleet size dynamically
+    - `notify_disruption(event)`: Handle service disruptions
+    - `get_terminals_and_directions()`: Get terminal stations and valid directions
     - Owns its TrainGenerator instance
 
 ### Network & Routing
@@ -69,6 +80,9 @@
     - `find_path(origin, dest)`: Shortest path routing using Dijkstra's algorithm
     - `assign_path_to_customer(customer_idx, memmap)`: Compute and assign route to passenger
     - `get_transfer_options(station_id)`: Available lines at a station
+- **`draw_map.py`** - Network visualization
+  - `DrawMap`: Visualize rail network topology
+    - `draw(map_obj)`: Render stations and lines using matplotlib
 
 ### Main Simulation Loop
 - **`simulation.py`** - Orchestrates the entire simulation
@@ -86,14 +100,18 @@
     - `run(n_ticks)`: Execute simulation for N ticks
     - `snapshot()`: Export to PyArrow/Parquet for analytics
     - `collect_metrics()`: Calculate boarding rates, wait times, occupancy
+    - `process_events()`: Handle scheduled events
+    - `add_customer_generator(gen)`: Register customer generator
+- **`logger.py`** - Logging utilities
+  - `get_logger()`: Returns configured logger instance
 
 ## Object Ownership
 
 - `Line` owns `TrainGenerator`
 - `Map` owns `PathTable`, `Station` dict, `Line` list
-- `SimulationLoop` owns `MemmapAllocator`, `Map`, `CustomerGenerator` list
-- `Train` references customers via indices into memmap
-- `Station` references customers via indices into memmap
+- `SimulationLoop` owns `MemmapAllocator` or `MemoryAllocator`, `Map`, `CustomerGenerator` list
+- `Train` references customers via indices into memmap/memory
+- `Station` references customers via indices into memmap/memory
 
 
 # Rail Simulation - Class Diagram & Interactions
@@ -144,6 +162,22 @@
 │  │ + release_index(idx)                                         │  │
 │  │ + get_next_id() -> int                                       │  │
 │  │ + flush()                                                    │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                      MemoryAllocator                               │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ - capacity: int                                              │  │
+│  │ - data: np.ndarray[CUSTOMER_DTYPE]                           │  │
+│  │ - free_indices: List[int]                                    │  │
+│  │ - next_id: int                                               │  │
+│  │                                                              │  │
+│  │ + allocate_index() -> int                                    │  │
+│  │ + allocate_indices(n) -> np.ndarray                          │  │
+│  │ + release_index(idx)                                         │  │
+│  │ + get_next_id() -> int                                       │  │
+│  │ + flush()                                                    │  │
+│  │ + _grow()                                                    │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────┘
                               │
@@ -207,17 +241,17 @@
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                         Line                                │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │ - line_id: str                                        │ │
-│  │ - line_code: str                                      │ │
-│  │ - station_list: List[int]                             │ │
-│  │ - time_between_stations: List[float]                  │ │
-│  │ - schedule: Dict                                      │ │
-│  │ - fleet_size: int                                     │ │
-│  │ - bidirectional: bool                                 │ │
-│  │ - train_generator: TrainGenerator                     │ │
-│  │                                                        │ │
+│                         Line                               │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ - line_id: str                                       │ │
+│  │ - line_code: str                                     │ │
+│  │ - station_list: List[int]                            │ │
+│  │ - time_between_stations: List[float]                 │ │
+│  │ - schedule: Dict                                     │ │
+│  │ - fleet_size: int                                    │ │
+│  │ - bidirectional: bool                                │ │
+│  │ - train_generator: TrainGenerator                    │ │
+│  │                                                      │ │
 │  │ + get_next_station(current, direction) -> int        │ │
 │  │ + get_travel_time(from, to) -> float                 │ │
 │  │ + update_fleet(new_size)                              │ │
@@ -228,25 +262,28 @@
                               │ delegates to
                               ▼
 ┌────────────────────────────────────────────────────────────┐
-│                    TrainGenerator                           │
-│  ┌──────────────────────────────────────────────────────┐ │
+│                    TrainGenerator                          │
+│  ┌───────────────────────────────────────────────────────┐ │
 │  │ - line_id: str                                        │ │
 │  │ - fleet_size: int                                     │ │
 │  │ - schedule_policy: Dict                               │ │
 │  │ - active_trains: Set[int]                             │ │
 │  │ - idle_pool: List[int]                                │ │
 │  │ - next_spawn_times: List[float]                       │ │
-│  │                                                        │ │
-│  │ + tick(current_time) -> List[TrainSpawn]             │ │
+│  │                                                       │ │
+│  │ + tick(current_time) -> List[TrainMake]               │ │
 │  │ + allocate_train() -> int                             │ │
 │  │ + release_train(train_id)                             │ │
-│  └──────────────────────────────────────────────────────┘ │
+│  │ + handle_direction_change(train_id)                   │ │
+│  │ + _create_train_id() -> int                           │ │
+│  │ + _create_make_event(...) -> TrainMake                │ │
+│  └───────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────┘
                               │
                               │ creates
                               ▼
                       ┌──────────────┐
-                      │  TrainSpawn  │
+                      │  TrainMake   │
                       │  (dataclass) │
                       └──────────────┘
                               │
@@ -301,7 +338,7 @@
 ┌────────────────────────────────────────────────────────────┐
 │                  CustomerGenerator                          │
 │  ┌──────────────────────────────────────────────────────┐ │
-│  │ - allocator: MemmapAllocator                          │ │
+│  │ - allocator: MemmapAllocator or MemoryAllocator      │ │
 │  │ - station_id: int                                     │ │
 │  │ - arrival_rate_profile: Callable[[float], float]     │ │
 │  │ - rng: np.random.Generator                            │ │
@@ -344,8 +381,8 @@ Example: [("T1", 1, 2), ("T1", 2, 3)]
         │
         ├─► CustomerGenerator.generate_customers(t, dt, destinations)
         │        │
-        │        ├─► MemmapAllocator.allocate_indices(n)
-        │        ├─► Write customer data to memmap
+        │        ├─► MemmapAllocator/MemoryAllocator.allocate_indices(n)
+        │        ├─► Write customer data to memmap/memory
         │        └─► Return customer indices
         │
         ├─► Map.assign_path_to_customer(idx, memmap)
@@ -355,7 +392,7 @@ Example: [("T1", 1, 2), ("T1", 2, 3)]
         │        │        ├─► nx.shortest_path(graph, origin, dest)
         │        │        └─► PathTable.plan(origin, dest, segments)
         │        │
-        │        └─► Write path_id to memmap
+        │        └─► Write path_id to memmap/memory
         │
         └─► Station.enqueue_passenger(idx)
 
@@ -367,9 +404,9 @@ Example: [("T1", 1, 2), ("T1", 2, 3)]
                  ├─► Check service hours
                  ├─► Check headway
                  ├─► TrainGenerator.allocate_train()
-                 └─► Return List[TrainSpawn]
+                 └─► Return List[TrainMake]
                       │
-                      └─► Line.build_timetable(start_time, direction)
+                      └─► Line.build_timetable(start_time, direction, min_interval)
                            │
                            └─► Create Train instance
 
@@ -427,7 +464,7 @@ Example: [("T1", 1, 2), ("T1", 2, 3)]
 
 ```
 SimulationLoop
-├── owns: MemmapAllocator (1)
+├── owns: MemmapAllocator or MemoryAllocator (1)
 ├── owns: Map (1)
 │   ├── owns: List[Line]
 │   │   └── owns: TrainGenerator (1 per Line)
@@ -437,8 +474,8 @@ SimulationLoop
 └── owns: List[CustomerGenerator]
 
 References (by index/id):
-├── Train.onboard_passengers -> Customer indices in memmap
-├── Station.waiting_passengers -> Customer indices in memmap
+├── Train.onboard_passengers -> Customer indices in memmap/memory
+├── Station.waiting_passengers -> Customer indices in memmap/memory
 ├── Customer.on_train_id -> Train.id
 ├── Customer.current_station_id -> Station.station_id
 ├── Customer.path_id -> PathTable entry
@@ -490,7 +527,7 @@ Train Status:
 
 | Class              | Type      | Storage          | Lifecycle           |
 |--------------------|-----------|------------------|---------------------|
-| Customer           | Data      | NumPy memmap     | Persistent (disk)   |
+| Customer           | Data      | NumPy memmap/arr | Persistent/Runtime  |
 | Train              | Object    | Python list      | Ephemeral (runtime) |
 | Station            | Object    | Dict in Map      | Persistent (config) |
 | Line               | Object    | List in Map      | Persistent (config) |
@@ -500,3 +537,4 @@ Train Status:
 | SimulationLoop     | Object    | Entry point      | Runtime (main)      |
 | Map                | Object    | Owned by Sim     | Persistent (config) |
 | MemmapAllocator    | Manager   | Owned by Sim     | Runtime (main)      |
+| MemoryAllocator    | Manager   | Owned by Sim     | Runtime (main)      |
