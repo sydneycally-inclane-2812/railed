@@ -5,6 +5,7 @@ Test case: Simple simulation
 - in-memory allocator
 - customer coming from only 2 stations
 - running for 2 hour ticks
+- using string station IDs (auto-mapped to integers internally)
 """
 
 import sys
@@ -44,21 +45,21 @@ def main():
     
     # 3. Create stations
     station_central = Station(
-        station_id=1,
+        station_id="central",
         name="Central",
         line_codes=["T1"],
         theoretical_capacity=5000
     )
     
     station_redfern = Station(
-        station_id=2,
+        station_id="redfern",
         name="Redfern",
         line_codes=["T1"],
         theoretical_capacity=2000
     )
     
     station_erskineville = Station(
-        station_id=3,
+        station_id="ersk",
         name="Erskineville",
         line_codes=["T1"],
         theoretical_capacity=1500
@@ -73,7 +74,7 @@ def main():
     line_t1 = Line(
         line_id="T1",
         line_code="T1",
-        station_list=[1, 2, 3],
+        station_list=["central", "redfern", "ersk"],
         time_between_stations=[60.0, 120.0],  # seconds
         schedule={'headway': 200, 'service_hours': (6, 22), 'capacity': 1000},
         fleet_size=4,
@@ -85,14 +86,14 @@ def main():
     # 5. Create customer generators
     gen_central = CustomerGenerator(
         allocator=allocator,
-        station_id=1,
+        station_id="central",
         arrival_rate_profile=peaky_arrival_rate,
         seed=42
     )
     
     gen_redfern = CustomerGenerator(
         allocator=allocator,
-        station_id=2,
+        station_id="redfern",
         arrival_rate_profile=peaky_arrival_rate,
         seed=43
     )

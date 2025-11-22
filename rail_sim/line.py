@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from .train_gen import TrainGenerator
 from .logger import get_logger
 
@@ -9,7 +9,7 @@ class Line:
         self,
         line_id: str,
         line_code: str,
-        station_list: List[int],
+        station_list: List[Union[str, int]],
         time_between_stations: List[float],
         schedule: Dict,
         fleet_size: int,
@@ -17,7 +17,10 @@ class Line:
     ):
         self.line_id = line_id
         self.line_code = line_code
-        self.station_list = station_list
+        # Store original station list (may be strings or ints)
+        self.station_list_original = station_list
+        # This will be converted to integers by Map.add_line
+        self.station_list: List[int] = []
         self.time_between_stations = time_between_stations
         self.schedule = schedule
         self.fleet_size = fleet_size

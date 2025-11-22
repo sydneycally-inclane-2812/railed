@@ -58,9 +58,15 @@ class SimulationLoop:
 	
 	def add_customer_generator(self, gen: CustomerGenerator):
 		"""Register a customer generator"""
+		# Convert string station_id to integer if needed
+		if not isinstance(gen.station_id_original, int):
+			gen.station_id = self.map.get_int_id(str(gen.station_id_original))
+		elif gen.station_id == 0:
+			gen.station_id = int(gen.station_id_original)
+		
 		self.customer_generators.append(gen)
 		logger = get_logger()
-		logger.info(f"Added customer generator for station {gen.station_id}")
+		logger.info(f"Added customer generator for station '{gen.station_id_original}' (ID: {gen.station_id})")
 	
 	def step(self):
 		"""

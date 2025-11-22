@@ -16,22 +16,73 @@ class Map:
         self.station_lookup: Dict[str, Station] = {}
         self.path_table = PathTable()
         
+        # String ID to Integer ID mapping
+        self.str_to_int: Dict[str, int] = {}
+        self.int_to_str: Dict[int, str] = {}
+        self._next_station_id = 1
+        
         # Build graph
         self.graph = nx.Graph()
         logger.info("Map initialized")
     
+    def register_station_id(self, str_id: str) -> int:
+        """Register a string station ID and return its integer equivalent.
+        If already registered, return existing ID."""
+        if str_id in self.str_to_int:
+            return self.str_to_int[str_id]
+        
+        int_id = self._next_station_id
+        self._next_station_id += 1
+        
+        self.str_to_int[str_id] = int_id
+        self.int_to_str[int_id] = str_id
+        
+        logger.debug(f"Registered station ID mapping: '{str_id}' -> {int_id}")
+        return int_id
+    
+    def get_int_id(self, str_id: str) -> int:
+        """Convert string station ID to integer ID."""
+        if str_id not in self.str_to_int:
+            raise ValueError(f"Station ID '{str_id}' not registered. Register stations before using them.")
+        return self.str_to_int[str_id]
+    
+    def get_str_id(self, int_id: int) -> str:
+        """Convert integer station ID to string ID."""
+        if int_id not in self.int_to_str:
+            raise ValueError(f"Integer station ID {int_id} not found in mapping.")
+        return self.int_to_str[int_id]
+    
     def add_line(self, line: Line):
         """Add a line to the map"""
+        # Convert station list from strings to integers
+        line.station_list = []
+        for station_id in line.station_list_original:
+            if isinstance(station_id, int):
+                # If already an integer, ensure it's registered
+                if station_id not in self.int_to_str:
+                    # Auto-register with str(int) as the string ID
+                    self.str_to_int[str(station_id)] = station_id
+                    self.int_to_str[station_id] = str(station_id)
+                line.station_list.append(station_id)
+            else:
+                # Convert string to integer
+                int_id = self.get_int_id(str(station_id))
+                line.station_list.append(int_id)
+        
         self.lines.append(line)
         self._rebuild_graph()
-        logger.info(f"Added line {line.line_code} to network")
+        logger.info(f"Added line {line.line_code} to network with stations: {line.station_list}")
     
     def add_station(self, station: Station):
         """Add a station to the map"""
-        self.stations[station.station_id] = station
+        # Register the string ID and get/set the integer ID
+        int_id = self.register_station_id(station.station_id_str)
+        station.station_id = int_id
+        
+        self.stations[int_id] = station
         self.station_lookup[station.name] = station
         self._rebuild_graph()
-        logger.info(f"Added station {station.station_id} ({station.name}) to network")
+        logger.info(f"Added station '{station.station_id_str}' (ID: {int_id}, Name: {station.name}) to network")
     
     def _rebuild_graph(self):
         """Rebuild network graph from lines"""

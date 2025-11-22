@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Callable, Optional, List
+from typing import Callable, Optional, List, Union
 from .memory import MemmapAllocator, MemoryAllocator, CUSTOMER_DTYPE
 from .logger import get_logger
 
@@ -11,12 +11,15 @@ class CustomerGenerator:
     def __init__(
         self, 
         allocator: MemmapAllocator | MemoryAllocator,
-        station_id: int,
+        station_id: Union[str, int],
         arrival_rate_profile: Callable[[float], float],
         seed: Optional[int] = None
     ):
         self.allocator = allocator
-        self.station_id = station_id
+        # Store original station_id (may be string or int)
+        self.station_id_original = station_id
+        # This will be set to integer by SimulationLoop.add_customer_generator
+        self.station_id: int = int(station_id) if isinstance(station_id, int) else 0
         self.arrival_rate_profile = arrival_rate_profile
         self.rng = np.random.default_rng(seed)
         logger.info(f"CustomerGenerator initialized for station {station_id} with seed={seed}")

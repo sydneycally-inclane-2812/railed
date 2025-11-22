@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Union
 from .logger import get_logger
 
 logger = get_logger()
@@ -9,14 +9,17 @@ class Station:
     
     def __init__(
         self,
-        station_id: int,
+        station_id: Union[str, int],
         name: str,
         line_codes: List[str],
         avg_change_time: float = 60.0,
         theoretical_capacity: int = 5000,
         maximum_capacity: int = 10000
     ):
-        self.station_id = station_id
+        # Store string ID for user-facing operations
+        self.station_id_str = str(station_id)
+        # Internal integer ID (will be set by Map.add_station)
+        self.station_id: int = int(station_id) if isinstance(station_id, int) else 0
         self.name = name
         self.line_codes = line_codes
         self.avg_change_time = avg_change_time
