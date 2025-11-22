@@ -22,6 +22,9 @@ class Line:
 		self.station_list_original = station_list
 		# This will be converted to integers by Map.add_line
 		self.station_list: List[int] = []
+		# Assert that the time between stations is the correct length 
+		assert len(time_between_stations) == len(station_list) - 1, \
+			f"Expected {len(station_list) - 1} time values for {len(station_list)} stations, got {len(time_between_stations)}"
 		self.time_between_stations = time_between_stations
 		self.schedule = schedule
 		self.fleet_size = fleet_size

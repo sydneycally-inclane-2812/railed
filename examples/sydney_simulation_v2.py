@@ -23,7 +23,7 @@ from rail_sim import (
 
 def constant_arrival_rate(t):
     """Constant arrival rate function"""
-    return 5.0  # 5 customers per second = 300 per minute
+    return 2.0  # 5 customers per second = 300 per minute
 
 def main():
     # 1. Create memmap allocator

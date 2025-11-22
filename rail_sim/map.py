@@ -21,8 +21,8 @@ class Map:
         self.int_to_str: Dict[int, str] = {}
         self._next_station_id = 1
         
-        # Build graph
-        self.graph = nx.Graph()
+        # Build graph - use MultiGraph to support multiple lines on same edge
+        self.graph = nx.MultiGraph()
         logger.info("Map initialized")
     
     def register_station_id(self, str_id: str) -> int:
@@ -70,6 +70,15 @@ class Map:
                 line.station_list.append(int_id)
         
         self.lines.append(line)
+        
+        # Auto-populate line_codes in stations
+        for station_id in line.station_list:
+            if station_id in self.stations:
+                station = self.stations[station_id]
+                if line.line_code not in station.line_codes:
+                    station.line_codes.append(line.line_code)
+                    logger.debug(f"Added line {line.line_code} to station {station.name}")
+        
         self._rebuild_graph()
         logger.info(f"Added line {line.line_code} to network with stations: {line.station_list}")
     
@@ -94,6 +103,7 @@ class Map:
                 to_id = line.station_list[i + 1]
                 weight = line.time_between_stations[i]
                 
+                # MultiGraph allows multiple edges between same nodes
                 self.graph.add_edge(
                     from_id, 
                     to_id, 
@@ -123,9 +133,15 @@ class Map:
             for i in range(len(node_path) - 1):
                 from_id = node_path[i]
                 to_id = node_path[i + 1]
-                # Get line for this edge
+                # Get line for this edge - MultiGraph returns dict of edges by key
                 edge_data = self.graph.get_edge_data(from_id, to_id)
-                line_code = edge_data['line']
+                # For MultiGraph, edge_data is {key: {attributes}, ...}
+                # Pick the first edge (arbitrary choice when multiple lines exist)
+                if isinstance(edge_data, dict):
+                    first_key = next(iter(edge_data))
+                    line_code = edge_data[first_key].get('line', 'Unknown')
+                else:
+                    line_code = edge_data.get('line', 'Unknown')
                 segments.append((line_code, from_id, to_id))
             #print(f"DEBUG: Segments for path: {segments}")
             # Store in path table

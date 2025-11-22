@@ -55,6 +55,19 @@ class SimulationLoop:
 		logger.setLevel(log_level)
 		logger.info(f"SimulationLoop initialized: dt={dt}s, snapshot_interval={snapshot_interval} ticks")
 		
+		reachable_stations = set(self.map.graph.nodes())
+		all_stations = set(self.map.stations.keys())
+		unreachable = all_stations - reachable_stations
+		
+		if unreachable:
+			unreachable_names = [
+				f"{self.map.stations[sid].name} (ID: {sid})" 
+				for sid in unreachable
+			]
+			logger.warning(
+				f"WARNING: {len(unreachable)} station(s) are defined but not connected to any line: "
+				f"{', '.join(unreachable_names)}. These stations will not be used as destinations."
+			)
 	
 	def add_customer_generator(self, gen: CustomerGenerator):
 		"""Register a customer generator"""
@@ -124,8 +137,10 @@ class SimulationLoop:
 		# 1. Generate new customers
 		new_passenger_indices = []
 		for gen in self.customer_generators:
-			# Get all stations as possible destinations (exclude origin station)
-			destinations = [i for i in self.map.stations.keys() if i != gen.station_id]
+			# Get all stations that are in the graph (reachable) as possible destinations
+			# Only include stations that are part of at least one line
+			reachable_stations = set(self.map.graph.nodes())
+			destinations = [i for i in reachable_stations if i != gen.station_id]
 			
 			# Skip if no valid destinations
 			if not destinations:

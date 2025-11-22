@@ -47,21 +47,18 @@ def main():
     station_central = Station(
         station_id="central",
         name="Central",
-        line_codes=["T1"],
         theoretical_capacity=5000
     )
     
     station_redfern = Station(
         station_id="redfern",
         name="Redfern",
-        line_codes=["T1"],
         theoretical_capacity=2000
     )
     
     station_erskineville = Station(
         station_id="ersk",
         name="Erskineville",
-        line_codes=["T1"],
         theoretical_capacity=1500
     )
     

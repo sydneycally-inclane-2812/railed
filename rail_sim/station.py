@@ -11,7 +11,7 @@ class Station:
         self,
         station_id: Union[str, int],
         name: str,
-        line_codes: List[str],
+        line_codes: Optional[List[str]] = None,
         avg_change_time: float = 60.0,
         theoretical_capacity: int = 5000,
         maximum_capacity: int = 10000
@@ -21,7 +21,8 @@ class Station:
         # Internal integer ID (will be set by Map.add_station)
         self.station_id: int = int(station_id) if isinstance(station_id, int) else 0
         self.name = name
-        self.line_codes = line_codes
+        # line_codes will be auto-populated by Map when lines are added
+        self.line_codes = line_codes if line_codes is not None else []
         self.avg_change_time = avg_change_time
         self.theoretical_capacity = theoretical_capacity
         self.maximum_capacity = maximum_capacity
@@ -32,7 +33,7 @@ class Station:
         # Optional: platform tracking
         self.platforms: Dict[int, List[int]] = {}  # platform_id -> [train_ids]
         
-        logger.info(f"Station {station_id} ({name}) initialized: lines={line_codes}, capacity={theoretical_capacity}")
+        logger.info(f"Station {station_id} ({name}) initialized: capacity={theoretical_capacity}")
     
     def enqueue_passenger(self, customer_idx: int):
         """Add passenger to waiting queue"""

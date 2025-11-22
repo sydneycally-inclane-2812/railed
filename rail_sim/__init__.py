@@ -10,6 +10,7 @@ from .station import Station
 from .train_gen import TrainGenerator
 from .line import Line
 from .map import Map
+from .draw_map import DrawMap
 from .simulation import SimulationLoop, SimulationMetrics
 
 __version__ = "0.1.0"
@@ -28,4 +29,5 @@ __all__ = [
     'Map',
     'SimulationLoop',
     'SimulationMetrics',
+	'DrawMap'
 ]

@@ -1,7 +1,7 @@
 - [DONE] Fix the duplicated trains
 - [DONE] Implement/fix peak hour distributions
-- Implement full Sydney system
-
+- [DONE-ISH] Implement full Sydney system
+- 
 Low Priority
 - Add delays
 - Add real-time visualization
