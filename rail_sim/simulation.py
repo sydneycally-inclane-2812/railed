@@ -207,7 +207,7 @@ class SimulationLoop:
 
 		# Debug: print queue at each station and train occupancy every 100 ticks
 		if self.current_tick % 100 == 1:
-			print(f"Tick {self.current_tick} (Time: {self.current_time:.1f}s): Station queues:")
+			print(f"Tick {self.current_tick} (Time: {self.current_time:.1f}s or {round(self.current_time/3600, 2)}h): Station queues:")
 			for station_id, station in self.map.stations.items():
 				print(f"  Station {station.name} (ID {station_id}): {len(station.waiting_passengers)} waiting")
 
