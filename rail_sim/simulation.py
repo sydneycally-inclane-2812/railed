@@ -372,6 +372,12 @@ class SimulationLoop:
 	def run(self, n_ticks: int):
 		"""Run simulation for n ticks"""
 		print(f"Starting simulation for {n_ticks} ticks...")
+		
+		# Pre-allocate indices for fast allocation during simulation
+		logger = get_logger()
+		estimated_customers = int(n_ticks * 50)  # Rough estimate; adjust based on arrival rates
+		logger.info(f"Pre-allocating {estimated_customers} customer indices for simulation...")
+		self.allocator.preallocate(estimated_customers)
 
 		for _ in range(n_ticks):
 			self.step()

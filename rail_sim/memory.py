@@ -28,8 +28,9 @@ class MemmapAllocator:
     def __init__(self, filepath: str, initial_capacity: int = 1_000_000):
         self.filepath = Path(filepath)
         self.capacity = initial_capacity
-        self.free_indices = []
+        self.free_stack = []  # Stack-based free list (O(1) pop/push)
         self.next_id = 1
+        self._next_scan_idx = 0  # Track where to scan for initial free indices
         
         logger.info(f"Initializing MemmapAllocator with capacity={initial_capacity} at {filepath}")
         
@@ -54,18 +55,16 @@ class MemmapAllocator:
             logger.info(f"Created new memmap with capacity={self.capacity}")
     
     def allocate_index(self) -> int:
-        """Get next available index"""
-        if self.free_indices:
-            idx = self.free_indices.pop()
-            logger.debug(f"Allocated index {idx} from free pool (pool size: {len(self.free_indices)})")
+        """Get next available index (O(1) from pre-allocated stack)"""
+        # Fast path: use pre-allocated free stack
+        if self.free_stack:
+            idx = self.free_stack.pop()
             return idx
         
-        # Find next free slot
-        for idx in range(self.capacity):
+        # Slow path: scan for free slots (only happens if stack depleted)
+        for idx in range(self._next_scan_idx, self.capacity):
             if self.memmap['id'][idx] == 0:
-                # Mark this slot as allocated by setting a non-zero id
-                self.memmap['id'][idx] = self.get_next_id()
-                logger.debug(f"Allocated new index {idx}")
+                self._next_scan_idx = idx + 1
                 return idx
         
         # Need to grow memmap
@@ -73,19 +72,35 @@ class MemmapAllocator:
         raise RuntimeError("Memmap capacity exceeded")
     
     def allocate_indices(self, n: int) -> np.ndarray:
-        """Allocate multiple indices"""
-        logger.debug(f"Allocating {n} indices")
+        """Allocate multiple indices (fast batch using pre-allocated stack)"""
+        if len(self.free_stack) >= n:
+            indices = [self.free_stack.pop() for _ in range(n)]
+            return np.array(indices, dtype=np.int64)
+        
+        logger.debug(f"Allocating {n} indices (stack had {len(self.free_stack)})")
         indices = []
         for _ in range(n):
             indices.append(self.allocate_index())
         logger.debug(f"Successfully allocated {n} indices")
         return np.array(indices, dtype=np.int64)
     
+    def preallocate(self, n: int) -> None:
+        """Pre-allocate n free indices for fast allocation during simulation."""
+        logger.info(f"Pre-allocating {n} free indices...")
+        initial_stack_size = len(self.free_stack)
+        
+        for idx in range(self._next_scan_idx, min(self._next_scan_idx + n, self.capacity)):
+            if self.memmap['id'][idx] == 0:
+                self.free_stack.append(idx)
+        
+        self._next_scan_idx = min(self._next_scan_idx + n, self.capacity)
+        allocated_count = len(self.free_stack) - initial_stack_size
+        logger.info(f"Pre-allocated {allocated_count} indices (free stack now has {len(self.free_stack)})")
+    
     def release_index(self, idx: int):
         """Mark index as free for reuse"""
-        logger.debug(f"Releasing index {idx} to free pool")
         self.memmap[idx] = 0  # Zero out the record
-        self.free_indices.append(idx)
+        self.free_stack.append(idx)
     
     def flush(self):
         """Flush memmap to disk"""
@@ -105,8 +120,9 @@ class MemoryAllocator:
     
     def __init__(self, initial_capacity: int = 1_000_000):
         self.capacity = initial_capacity
-        self.free_indices = []
+        self.free_stack = []  # Stack-based free list (O(1) pop/push)
         self.next_id = 1
+        self._next_scan_idx = 0
         
         logger.info(f"Initializing MemoryAllocator with capacity={initial_capacity} (in-memory)")
         
@@ -115,18 +131,15 @@ class MemoryAllocator:
         logger.info(f"Created in-memory array with capacity={self.capacity}")
     
     def allocate_index(self) -> int:
-        """Get next available index"""
-        if self.free_indices:
-            idx = self.free_indices.pop()
-            logger.debug(f"Allocated index {idx} from free pool (pool size: {len(self.free_indices)})")
+        """Get next available index (O(1) from pre-allocated stack)"""
+        if self.free_stack:
+            idx = self.free_stack.pop()
             return idx
         
-        # Find next free slot
-        for idx in range(self.capacity):
+        # Scan for free slots
+        for idx in range(self._next_scan_idx, self.capacity):
             if self.memmap['id'][idx] == 0:
-                # Mark this slot as allocated by setting a non-zero id
-                self.memmap['id'][idx] = self.get_next_id()
-                logger.debug(f"Allocated new index {idx}")
+                self._next_scan_idx = idx + 1
                 return idx
         
         # Need to grow array
@@ -135,19 +148,35 @@ class MemoryAllocator:
         return self.allocate_index()
     
     def allocate_indices(self, n: int) -> np.ndarray:
-        """Allocate multiple indices"""
-        logger.debug(f"Allocating {n} indices")
+        """Allocate multiple indices (fast batch using pre-allocated stack)"""
+        if len(self.free_stack) >= n:
+            indices = [self.free_stack.pop() for _ in range(n)]
+            return np.array(indices, dtype=np.int64)
+        
+        logger.debug(f"Allocating {n} indices (stack had {len(self.free_stack)})")
         indices = []
         for _ in range(n):
             indices.append(self.allocate_index())
         logger.debug(f"Successfully allocated {n} indices")
         return np.array(indices, dtype=np.int64)
     
+    def preallocate(self, n: int) -> None:
+        """Pre-allocate n free indices for fast allocation during simulation."""
+        logger.info(f"Pre-allocating {n} free indices...")
+        initial_stack_size = len(self.free_stack)
+        
+        for idx in range(self._next_scan_idx, min(self._next_scan_idx + n, self.capacity)):
+            if self.memmap['id'][idx] == 0:
+                self.free_stack.append(idx)
+        
+        self._next_scan_idx = min(self._next_scan_idx + n, self.capacity)
+        allocated_count = len(self.free_stack) - initial_stack_size
+        logger.info(f"Pre-allocated {allocated_count} indices (free stack now has {len(self.free_stack)})")
+    
     def release_index(self, idx: int):
         """Mark index as free for reuse"""
-        logger.debug(f"Releasing index {idx} to free pool")
         self.memmap[idx] = 0  # Zero out the record
-        self.free_indices.append(idx)
+        self.free_stack.append(idx)
     
     def flush(self):
         """No-op for in-memory allocator (for API compatibility)"""
