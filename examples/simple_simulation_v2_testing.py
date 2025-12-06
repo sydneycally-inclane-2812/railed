@@ -12,7 +12,7 @@ import sys
 import numpy as np
 import logging
 from pathlib import Path
-
+import time
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -23,9 +23,14 @@ from rail_sim import (
     Station,
     Line,
     Map,
-    SimulationLoop
+    SimulationLoop,
+    precalculate
 )
+current = time.time()
 
+# Non-precalculate: 158 seconds for 3600 ticks
+# Precalculate: 
+@precalculate(method='staircase', resolution=2000)
 def peaky_arrival_rate(t):
     scale = 10
     morn_aft_scale = 4
@@ -116,12 +121,13 @@ def main():
     
     
     print("\n=== Running full simulation ===")
-    sim.run(n_ticks=3600*10)  # Run remaining ticks
+    sim.run(n_ticks=3600*1)  # Run remaining ticks
     
     print("\nSimulation complete!")
     print(f"Final metrics: {sim.metrics_history[-1]}")
 
 if __name__ == "__main__":
     main()
+    print("Simulation took", time.time() - current, "seconds")
     
 #test
