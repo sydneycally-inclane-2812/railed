@@ -52,6 +52,13 @@ class SimulationLoop:
 		
 		self.metrics_history: List[SimulationMetrics] = []
 		
+		# Visualization support
+		self.visualization_enabled = False
+		self.visualization_capture_rate = 30  # Snapshots per second
+		self.visualization_tick_counter = 0
+		self.visualization_frame_skip = 1
+		self.station_history: List[Dict[int, int]] = []  # Per-tick station passenger counts
+		
 		logger = get_logger()
 		logger.setLevel(log_level)
 		logger.info(f"SimulationLoop initialized: dt={dt}s, snapshot_interval={snapshot_interval} ticks")
@@ -81,6 +88,39 @@ class SimulationLoop:
 		self.customer_generators.append(gen)
 		logger = get_logger()
 		logger.info(f"Added customer generator for station '{gen.station_id_original}' (ID: {gen.station_id})")
+	
+	def enable_visualization(self, capture_rate: int = 30):
+		"""
+		Enable station state capture for visualization
+		
+		Args:
+			capture_rate: Number of snapshots to capture per second (capped at 60)
+		"""
+		self.visualization_enabled = True
+		self.visualization_capture_rate = min(capture_rate, 60)
+		
+		# Calculate how many ticks to skip between captures
+		ticks_per_second = 1.0 / self.dt
+		self.visualization_frame_skip = max(1, int(ticks_per_second / self.visualization_capture_rate))
+		
+		logger = get_logger()
+		logger.info(f"Visualization enabled - capturing {self.visualization_capture_rate} snapshots/sec (every {self.visualization_frame_skip} ticks)")
+	
+	def _capture_station_state(self):
+		"""Capture current passenger counts at all stations"""
+		if not self.visualization_enabled:
+			return
+		
+		# Only capture at the specified rate
+		self.visualization_tick_counter += 1
+		if self.visualization_tick_counter % self.visualization_frame_skip != 0:
+			return
+		
+		station_counts = {}
+		for station_id, station in self.map.stations.items():
+			station_counts[station_id] = len(station.waiting_passengers)
+		
+		self.station_history.append(station_counts)
 	
 	def step(self):
 		"""
@@ -287,9 +327,8 @@ class SimulationLoop:
 		
 		# 5. Update waiting times for waiting passengers
 		waiting_mask = (self.allocator.memmap['state'] == 0) & (self.allocator.memmap['id'] > 0)
-		waiting_indices = np.where(waiting_mask)[0]
-		if len(waiting_indices) > 0:
-			self.allocator.memmap[waiting_indices]['total_wait_time'] += self.dt
+		# Note: must access field first, then apply mask for in-place modification to work
+		self.allocator.memmap['total_wait_time'][waiting_mask] += self.dt
 		
 		# 6. Collect metrics
 		metrics = self.collect_metrics(boarding_count, alighting_count)
@@ -298,6 +337,9 @@ class SimulationLoop:
 		if self.current_tick % 100 == 0:
 			logger.info(f"Metrics: {metrics.active_trains} trains, {metrics.waiting_passengers} waiting, "
 					   f"boarding_rate={metrics.boarding_rate:.2f}, alight_rate={metrics.alight_rate:.2f}")
+		
+		# Capture station state for visualization if enabled
+		self._capture_station_state()
 		
 		# 7. Snapshot if needed
 		if self.current_tick % self.snapshot_interval == 0:

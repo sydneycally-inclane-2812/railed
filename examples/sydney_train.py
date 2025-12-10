@@ -135,7 +135,7 @@ from rail_sim import Line
 class SydneyNetwork:
     def __init__(self):
         self.stations = [
-            station_central, station_redfern, station_erskineville, station_newtown,
+            station_central, station_redfern, station_erskineville ,station_newtown,
             station_strathfield, station_parramatta, station_penrith, station_airport,
             station_bondi, station_townhall, station_wynyard, station_circular_quay,
             station_north_sydney, station_hornsby, station_epping, station_lidcombe,
@@ -182,8 +182,8 @@ class SydneyNetwork:
             Line(
                 line_id="T3",
                 line_code="T3",
-                station_list=["bankstown", "campsie", "sydenham", "redfern", "central", "townhall", "wynyard", "circular_quay"],
-                time_between_stations=[180, 120, 180, 120, 60, 120, 100],
+                station_list=["bankstown", "campsie", "sydenham", "erskineville", "redfern", "central", "townhall", "wynyard", "circular_quay"],
+                time_between_stations=[180, 120, 180, 120, 120, 60, 120, 100],
                 schedule={'headway': 300, 'service_hours': (5, 23), 'capacity': 800},
                 fleet_size=9,
                 bidirectional=True

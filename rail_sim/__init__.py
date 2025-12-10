@@ -12,6 +12,7 @@ from .line import Line
 from .map import Map
 from .draw_map import DrawMap
 from .simulation import SimulationLoop, SimulationMetrics
+from .visualizer import Visualizer
 from .arrival_rate_profile import precalculate
 
 __version__ = "0.1.0"
@@ -31,5 +32,6 @@ __all__ = [
     'SimulationLoop',
     'SimulationMetrics',
 	'DrawMap',
+	'Visualizer',
     'precalculate'
 ]
