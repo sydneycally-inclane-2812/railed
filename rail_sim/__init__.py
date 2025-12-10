@@ -13,6 +13,7 @@ from .map import Map
 from .draw_map import DrawMap
 from .simulation import SimulationLoop, SimulationMetrics
 from .visualizer import Visualizer
+from .graph_exporter import GraphExporter
 from .arrival_rate_profile import precalculate
 
 __version__ = "0.1.0"
@@ -33,5 +34,6 @@ __all__ = [
     'SimulationMetrics',
 	'DrawMap',
 	'Visualizer',
+	'GraphExporter',
     'precalculate'
 ]

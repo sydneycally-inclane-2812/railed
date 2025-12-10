@@ -151,9 +151,9 @@ class SydneyNetwork:
             Line(
                 line_id="T1",
                 line_code="T1",
-                station_list=["berowra", "hornsby", "gordon", "chatswood", "wynyard", "townhall", "central", "redfern", "strathfield", "lidcombe", "auburn", "clyde", "granville", "parramatta", "seven_hills", "blacktown", "st_marys", "penrith", "emu_plains"],
-                time_between_stations=[180, 240, 300, 180, 120, 60, 120, 180, 120, 90, 120, 120, 180, 240, 180, 180, 240, 180],
-                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 1000},
+                station_list=["berowra", "hornsby", "gordon", "chatswood", "north_sydney","wynyard", "townhall", "central", "redfern", "strathfield", "lidcombe", "auburn", "clyde", "granville", "parramatta", "seven_hills", "blacktown", "st_marys", "penrith", "emu_plains"],
+                time_between_stations=[180, 180, 180, 120, 120, 120, 60, 120, 180, 120, 90, 120, 120, 180, 240, 180, 180, 240, 180],
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 400},
                 fleet_size=15,
                 bidirectional=True
             ),
@@ -162,7 +162,7 @@ class SydneyNetwork:
                 line_code="T2",
                 station_list=["circular_quay", "wynyard", "townhall", "central", "museum", "circular_quay", "wynyard", "townhall", "central", "redfern", "mcdtown", "newtown", "ashfield", "strathfield", "lidcombe", "auburn", "clyde", "granville", "parramatta"],
                 time_between_stations=[100, 60, 60, 80, 100, 100, 60, 60, 120, 90, 120, 150, 180, 120, 90, 120, 120, 180],
-                schedule={'headway': 450, 'service_hours': (5, 23), 'capacity': 900},
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 400},
                 fleet_size=10,
                 bidirectional=True
             ),
@@ -170,8 +170,8 @@ class SydneyNetwork:
                 line_id="T9",
                 line_code="T9",
                 station_list=["hornsby", "epping", "rhodes", "strathfield", "redfern", "central", "townhall", "wynyard", "chatswood", "gordon"],
-                time_between_stations=[240, 300, 180, 180, 120, 60, 120, 300, 240],
-                schedule={'headway': 550, 'service_hours': (5, 23), 'capacity': 800},
+                time_between_stations=[200, 300, 180, 180, 120, 60, 120, 300, 240],
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 400},
                 fleet_size=8,
                 bidirectional=True
             )
@@ -184,17 +184,17 @@ class SydneyNetwork:
                 line_code="T3",
                 station_list=["bankstown", "campsie", "sydenham", "erskineville", "redfern", "central", "townhall", "wynyard", "circular_quay"],
                 time_between_stations=[180, 120, 180, 120, 120, 60, 120, 100],
-                schedule={'headway': 300, 'service_hours': (5, 23), 'capacity': 800},
-                fleet_size=9,
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 300},
+                fleet_size=4,
                 bidirectional=True
             ),
             Line(
                 line_id="T4",
                 line_code="T4",
-                station_list=["bondi", "central", "redfern", "sydenham", "wolli_creek", "hurstville", "cronulla"],
-                time_between_stations=[300, 120, 180, 150, 240, 360],
-                schedule={'headway': 360, 'service_hours': (5, 23), 'capacity': 700},
-                fleet_size=6,
+                station_list=["bondi", "central", "redfern", "erskineville","sydenham", "wolli_creek", "hurstville", "cronulla"],
+                time_between_stations=[300, 120, 180, 150, 120, 240, 360],
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 400},
+                fleet_size=8,
                 bidirectional=True
             ),
             Line(
@@ -202,8 +202,8 @@ class SydneyNetwork:
                 line_code="T8",
                 station_list=["macarthur", "campbelltown", "glenfield", "revesby", "wolli_creek", "airport", "central", "museum", "circular_quay", "wynyard", "townhall", "central"],
                 time_between_stations=[180, 240, 300, 240, 360, 240, 80, 100, 100, 60, 60],
-                schedule={'headway': 500, 'service_hours': (5, 23), 'capacity': 600},
-                fleet_size=7,
+                schedule={'headway': 600, 'service_hours': (5, 23), 'capacity': 400},
+                fleet_size=8,
                 bidirectional=True
             )
         ])

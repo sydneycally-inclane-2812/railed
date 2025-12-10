@@ -78,14 +78,18 @@ class Visualizer:
 			return
 		
 		try:
-			# Use spring layout with multiple iterations for good spacing
+			# Two-pass layout for better spacing:
+			# 1. Kamada-Kawai for balanced edge lengths and good initial positions
+			pos = nx.kamada_kawai_layout(G)
+			# 2. Spring layout refinement to push nodes further apart
 			self.station_positions = nx.spring_layout(
 				G, 
-				k=0.5, 
-				iterations=200, 
+				pos=pos,  # Start from kamada-kawai positions
+				k=8,  # Repulsion strength (higher = more spread)
+				iterations=300,  # Refinement iterations
 				seed=42
 			)
-			logger.info(f"Computed positions for {len(self.station_positions)} stations")
+			logger.info(f"Computed positions for {len(self.station_positions)} stations using kamada-kawai + spring layout")
 		except Exception as e:
 			logger.error(f"Failed to compute station positions: {e}")
 			self.station_positions = {}
@@ -134,7 +138,8 @@ class Visualizer:
 		self,
 		station_history: List[Dict[int, int]],
 		output_path: str,
-		capture_rate: float = 30.0,
+		dt: float = 1.0,
+		sim_start_time: float = 0.0,
 		title: str = "Rail Network Simulation"
 	):
 		"""
@@ -143,7 +148,8 @@ class Visualizer:
 		Args:
 			station_history: List of dicts mapping station_id -> passenger_count (already captured at desired rate)
 			output_path: Path to save MP4 file
-			capture_rate: Rate at which snapshots were captured (snapshots per second)
+			dt: Simulation timestep in seconds (time per captured frame)
+			sim_start_time: Simulation start time in seconds (for clock display)
 			title: Video title displayed on screen
 		"""
 		if not station_history:
@@ -152,8 +158,17 @@ class Visualizer:
 		if not self.station_positions:
 			raise ValueError("No station positions computed - cannot render")
 		
+		# Store for time calculations
+		self.sim_start_time = sim_start_time
+		self.sim_dt = dt
+		
+		# Calculate playback speed (video fps vs simulation rate)
+		frames_per_sim_second = 1.0 / dt
+		playback_speed = self.fps / frames_per_sim_second
+		
 		logger.info(f"Rendering video with {len(station_history)} frames at {self.fps} fps")
-		logger.info(f"Capture rate: {capture_rate} snapshots/sec, Video duration: {len(station_history)/capture_rate:.2f}s")
+		logger.info(f"Simulation dt: {dt}s/frame, Playback speed: {playback_speed:.2f}x")
+		logger.info(f"Real-time duration: {len(station_history)*dt:.2f}s, Video duration: {len(station_history)/self.fps:.2f}s")
 		
 		# Find max passenger count for scaling
 		max_passengers = 0
@@ -169,10 +184,49 @@ class Visualizer:
 		fig, ax = plt.subplots(figsize=figsize, dpi=self.dpi)
 		
 		# Initial setup
-		ax.set_aspect('equal')
+		ax.set_aspect('equal')  # Maintain aspect ratio to prevent distortion
 		ax.axis('off')
-		ax.set_xlim(-1.2, 1.2)
-		ax.set_ylim(-1.2, 1.2)
+		
+		# Calculate bounds from actual station positions with minimal padding
+		if self.station_positions:
+			x_coords = [pos[0] for pos in self.station_positions.values()]
+			y_coords = [pos[1] for pos in self.station_positions.values()]
+			x_min, x_max = min(x_coords), max(x_coords)
+			y_min, y_max = min(y_coords), max(y_coords)
+			
+			# Add minimal 5% padding
+			x_range = x_max - x_min
+			y_range = y_max - y_min
+			padding = 0.05
+			
+			# Calculate the target aspect ratio based on resolution
+			target_aspect = self.resolution[0] / self.resolution[1]  # width/height = 1920/1080 = 1.778
+			current_aspect = x_range / y_range if y_range > 0 else 1.0
+			
+			# Adjust ranges to match target aspect ratio while keeping stations visible
+			if current_aspect < target_aspect:
+				# Graph is too tall, expand width
+				desired_x_range = y_range * target_aspect
+				x_center = (x_min + x_max) / 2
+				x_min = x_center - desired_x_range / 2
+				x_max = x_center + desired_x_range / 2
+			else:
+				# Graph is too wide, expand height
+				desired_y_range = x_range / target_aspect
+				y_center = (y_min + y_max) / 2
+				y_min = y_center - desired_y_range / 2
+				y_max = y_center + desired_y_range / 2
+			
+			# Apply padding
+			x_range = x_max - x_min
+			y_range = y_max - y_min
+			
+			ax.set_xlim(x_min - x_range * padding, x_max + x_range * padding)
+			ax.set_ylim(y_min - y_range * padding, y_max + y_range * padding)
+		else:
+			# Fallback
+			ax.set_xlim(-1.2, 1.2)
+			ax.set_ylim(-1.2, 1.2)
 		
 		# Draw network edges (lines) - static
 		for u, v, data in self.map.graph.edges(data=True):
@@ -187,12 +241,6 @@ class Visualizer:
 					alpha=0.5,
 					zorder=1
 				)
-		
-		# Store capture rate for time calculations
-		self.current_capture_rate = capture_rate
-		
-		# Store capture rate for time calculations
-		self.current_capture_rate = capture_rate
 		
 		# Title and info text
 		title_text = ax.text(
@@ -290,8 +338,9 @@ class Visualizer:
 				return []
 			
 			tick_data = station_history[frame_idx]
-			sim_time = frame_idx / self.current_capture_rate
-			
+			# Calculate actual simulation time: each frame represents dt seconds
+			sim_time = self.sim_start_time + (frame_idx * self.sim_dt)
+		
 			# Update time display
 			hours = int(sim_time // 3600)
 			minutes = int((sim_time % 3600) // 60)
