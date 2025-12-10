@@ -78,3 +78,90 @@ def daily_peak_arrival(base: float, peak: float, peak_hour: float, spread: float
         peak_value = peak * np.exp(-0.5 * ((hour - peak_hour) / spread) ** 2)
         return base + peak_value
     return profile
+
+def random_peak_hour(
+    peak_hour: float,
+    spread: float = 1.0,
+    period: int = 24,
+    random_seed: int = None
+):
+    """
+    Returns a function that samples a random hour of the day,
+    with higher probability near the specified peak_hour using a Gaussian distribution.
+
+    Args:
+        peak_hour: hour of the day with highest probability (e.g., 8 for 8am)
+        spread: standard deviation of the peak in hours
+        period: number of hours in a cycle (default 24)
+        random_seed: for reproducibility
+
+    Returns:
+        sample_hour(): function that returns a random hour (float, 0 <= hour < period)
+    """
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    # Precompute a probability distribution over hours [0, period)
+    hours = np.linspace(0, period, 1000, endpoint=False)
+    probs = np.exp(-0.5 * ((hours - peak_hour) / spread) ** 2)
+    probs /= probs.sum()  # Normalize
+
+    def sample_hour():
+        # Sample an index, then convert to hour
+        idx = np.random.choice(len(hours), p=probs)
+        return hours[idx]
+
+    return sample_hour
+
+def random_multi_peak_hour(
+    peak_hours: list,
+    spreads: list = None,
+    weights: list = None,
+    period: int = 24,
+    random_seed: int = None
+):
+    """
+    Returns a function that samples a random hour of the day,
+    with higher probability near multiple specified peak_hours using a mixture of Gaussians.
+
+    Args:
+        peak_hours: list of hours (e.g., [8, 17]) for peaks
+        spreads: list of std deviations for each peak (default 1.0 for all)
+        weights: list of weights for each peak (default equal for all)
+        period: number of hours in a cycle (default 24)
+        random_seed: for reproducibility
+
+    Returns:
+        sample_hour(): function that returns a random hour (float, 0 <= hour < period)
+    """
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    n_peaks = len(peak_hours)
+    if spreads is None:
+        spreads = [1.0] * n_peaks
+    if weights is None:
+        weights = [1.0] * n_peaks
+
+    hours = np.linspace(0, period, 1000, endpoint=False)
+    probs = np.zeros_like(hours)
+    for peak, spread, weight in zip(peak_hours, spreads, weights):
+        probs += weight * np.exp(-0.5 * ((hours - peak) / spread) ** 2)
+    probs /= probs.sum()  # Normalize
+
+    def sample_hour():
+        idx = np.random.choice(len(hours), p=probs)
+        return hours[idx]
+
+    return sample_hour
+
+# Example usage:
+if __name__ == "__main__":
+    sampler = random_multi_peak_hour(peak_hours=[8, 17], spreads=[1.5, 2.0], weights=[1, 0.8])
+    samples = [sampler() for _ in range(10000)]
+    import matplotlib.pyplot as plt
+    plt.hist(samples, bins=24, range=(0,24), density=True, alpha=0.7)
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Probability Density")
+    plt.title("Random Sampling with Peaks at 8am & 5pm")
+    plt.show()

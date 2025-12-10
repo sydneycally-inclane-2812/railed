@@ -8,6 +8,7 @@ from .memory import MemmapAllocator, MemoryAllocator
 from .map import Map
 from .train import Train
 from .customer_gen import CustomerGenerator
+from .stats_utils import MLEEstimator, BootstrapSampler
 
 @dataclass
 class SimulationMetrics:
@@ -434,3 +435,17 @@ class SimulationLoop:
 			print(" | ".join(headers))
 			for row in summary:
 				print(" | ".join(f"{v:.2f}" if isinstance(v, float) else str(v) for v in row))
+
+		# --- Advanced Statistics using stats.utils.py ---
+
+		# Example: Analyze average wait times
+		wait_times = col(metrics, "avg_wait_time")
+		print("\n[Advanced Stats] MLE and Bootstrap for Average Wait Time:")
+		mle = MLEEstimator(wait_times)
+		fit = mle.fit_normal()
+		print(f"Normal Fit: mean={fit['mu']:.3f}, std={fit['std']:.3f}")
+		mle.plot_fit('normal')
+
+		boot = BootstrapSampler(wait_times)
+		boot_means = boot.sample(n_samples=1000, stat_func=np.mean)
+		print(f"Bootstrap mean (95% CI): {np.percentile(boot_means, 2.5):.3f} - {np.percentile(boot_means, 97.5):.3f}")
