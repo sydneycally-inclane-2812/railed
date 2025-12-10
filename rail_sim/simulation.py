@@ -31,7 +31,10 @@ class SimulationLoop:
 		snapshot_interval: int = 3600,  # snapshots every hour
 		log_level = logging.INFO,
 		train_dedup: Literal["disabled", "warning", "enabled"] = "disabled",
-		min_headway: float = 60.0  # minimum seconds between trains at same station
+		min_headway: float = 60.0,  # minimum seconds between trains at same station
+		defrag_interval: int = 10_000,  # defragment memory every N ticks
+		defrag_threshold: float = 0.7,  # defragment if fragmentation exceeds this ratio
+		show_stats: bool = False
 	):
 		self.allocator = memmap_allocator
 		self.map = map_network
@@ -39,10 +42,12 @@ class SimulationLoop:
 		self.snapshot_interval = snapshot_interval
 		self.train_dedup = train_dedup
 		self.min_headway = min_headway
+		self.defrag_interval = defrag_interval
+		self.defrag_threshold = defrag_threshold
 		
 		self.current_tick = 0
 		self.current_time = 0.0
-		
+		self.show_stats = show_stats
 		self.active_trains: List[Train] = []
 		self.customer_generators: List[CustomerGenerator] = []
 		self.event_queue: List = []
@@ -346,7 +351,22 @@ class SimulationLoop:
 			logger.info(f"Taking snapshot at tick {self.current_tick}")
 			self.snapshot()
 		
-		# 8. Process events (disruptions, etc.)
+		# 8. Defragment memory if needed
+		if self.defrag_interval > 0 and self.current_tick % self.defrag_interval == 0:
+			logger.info(f"Checking memory fragmentation at tick {self.current_tick}")
+			compacted = self.allocator.defragment(threshold=self.defrag_threshold)
+			if compacted > 0:
+				logger.info(f"Defragmented memory: {compacted} active records")
+				
+				# Optionally trim capacity for MemoryAllocator
+				if hasattr(self.allocator, 'trim_capacity'):
+					try:
+						new_capacity = self.allocator.trim_capacity()
+						logger.info(f"Trimmed capacity to {new_capacity}")
+					except Exception as e:
+						logger.warning(f"Failed to trim capacity: {e}")
+		
+		# 9. Process events (disruptions, etc.)
 		self.process_events()
 	
 	def process_events(self):
@@ -481,13 +501,14 @@ class SimulationLoop:
 		# --- Advanced Statistics using stats.utils.py ---
 
 		# Example: Analyze average wait times
-		wait_times = col(metrics, "avg_wait_time")
-		print("\n[Advanced Stats] MLE and Bootstrap for Average Wait Time:")
-		mle = MLEEstimator(wait_times)
-		fit = mle.fit_normal()
-		print(f"Normal Fit: mean={fit['mu']:.3f}, std={fit['std']:.3f}")
-		mle.plot_fit('normal')
+		if self.show_stats:
+			wait_times = col(metrics, "avg_wait_time")
+			print("\n[Advanced Stats] MLE and Bootstrap for Average Wait Time:")
+			mle = MLEEstimator(wait_times)
+			fit = mle.fit_normal()
+			print(f"Normal Fit: mean={fit['mu']:.3f}, std={fit['std']:.3f}")
+			mle.plot_fit('normal')
 
-		boot = BootstrapSampler(wait_times)
-		boot_means = boot.sample(n_samples=1000, stat_func=np.mean)
-		print(f"Bootstrap mean (95% CI): {np.percentile(boot_means, 2.5):.3f} - {np.percentile(boot_means, 97.5):.3f}")
+			boot = BootstrapSampler(wait_times)
+			boot_means = boot.sample(n_samples=1000, stat_func=np.mean)
+			print(f"Bootstrap mean (95% CI): {np.percentile(boot_means, 2.5):.3f} - {np.percentile(boot_means, 97.5):.3f}")
