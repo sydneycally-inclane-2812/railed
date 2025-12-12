@@ -115,7 +115,7 @@ def main():
     print(f"Visualization enabled - capturing {capture_rate} snapshots per second\n")
     
     # 6. Run simulation
-    n_ticks = 3600*5  # Run for 1 hour (3600 seconds)
+    n_ticks = 3600*12  # Run for 1 hour (3600 seconds)
     print(f"Running simulation for {n_ticks} ticks ({n_ticks/3600:.1f} hours)...")
     sim.run(n_ticks=n_ticks)
     
@@ -137,7 +137,7 @@ def main():
     )
     
     # 8. Render video
-    output_path = Path(__file__).parent / "sydney_visualization.mp4"
+    output_path = Path(__file__).parent / "video.mp4"
     print(f"Rendering video to {output_path} at {video_fps} fps...")
     print("This may take a few minutes depending on the number of frames...\n")
     

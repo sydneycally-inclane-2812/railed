@@ -113,6 +113,56 @@ class MemmapAllocator:
         cid = self.next_id
         self.next_id += 1
         return cid
+    
+    def defragment(self, threshold: float = 0.5) -> int:
+        """
+        Compact memory when fragmentation exceeds threshold
+        
+        Args:
+            threshold: Defragment if fragmentation ratio exceeds this (0.0 to 1.0)
+            
+        Returns:
+            Number of records compacted
+        """
+        active_count = np.sum(self.memmap['id'] > 0)
+        fragmentation = 1 - (active_count / self.capacity)
+        
+        if fragmentation < threshold:
+            logger.debug(f"Fragmentation {fragmentation:.2%} below threshold {threshold:.2%}, skipping defrag")
+            return 0
+        
+        logger.info(f"Defragmenting memmap: {active_count} active / {self.capacity} capacity ({fragmentation:.2%} fragmented)")
+        
+        # Find all active records
+        active_mask = self.memmap['id'] > 0
+        active_data = self.memmap[active_mask].copy()
+        
+        # Clear entire memmap
+        self.memmap[:] = 0
+        
+        # Write active records to start
+        self.memmap[:len(active_data)] = active_data
+        
+        # Rebuild free stack with all indices after active data
+        self.free_stack = list(range(len(active_data), self.capacity))
+        self._next_scan_idx = len(active_data)
+        
+        logger.info(f"Defragmentation complete: compacted {len(active_data)} records, {len(self.free_stack)} free slots")
+        
+        return len(active_data)
+    
+    def trim_capacity(self, target_capacity: Optional[int] = None) -> int:
+        """
+        Reduce memmap capacity to save memory (cannot be used with file-backed memmap)
+        
+        Args:
+            target_capacity: New capacity (default: current active + 20% headroom)
+            
+        Returns:
+            New capacity
+        """
+        logger.error("trim_capacity not supported for file-backed memmap - use MemoryAllocator instead")
+        raise NotImplementedError("Cannot trim file-backed memmap")
 
 
 class MemoryAllocator:
@@ -206,4 +256,90 @@ class MemoryAllocator:
         self.memmap = new_array
         
         logger.info(f"Successfully grew array to {self.capacity}")
+    
+    def defragment(self, threshold: float = 0.5) -> int:
+        """
+        Compact memory when fragmentation exceeds threshold
+        
+        Args:
+            threshold: Defragment if fragmentation ratio exceeds this (0.0 to 1.0)
+            
+        Returns:
+            Number of records compacted
+        """
+        active_count = np.sum(self.memmap['id'] > 0)
+        fragmentation = 1 - (active_count / self.capacity)
+        
+        if fragmentation < threshold:
+            logger.debug(f"Fragmentation {fragmentation:.2%} below threshold {threshold:.2%}, skipping defrag")
+            return 0
+        
+        logger.info(f"Defragmenting array: {active_count} active / {self.capacity} capacity ({fragmentation:.2%} fragmented)")
+        
+        # Find all active records
+        active_mask = self.memmap['id'] > 0
+        active_data = self.memmap[active_mask].copy()
+        
+        # Clear entire array
+        self.memmap[:] = 0
+        
+        # Write active records to start
+        self.memmap[:len(active_data)] = active_data
+        
+        # Rebuild free stack with all indices after active data
+        self.free_stack = list(range(len(active_data), self.capacity))
+        self._next_scan_idx = len(active_data)
+        
+        logger.info(f"Defragmentation complete: compacted {len(active_data)} records, {len(self.free_stack)} free slots")
+        
+        return len(active_data)
+    
+    def trim_capacity(self, target_capacity: Optional[int] = None) -> int:
+        """
+        Reduce array capacity to save memory
+        
+        Args:
+            target_capacity: New capacity (default: current active + 20% headroom)
+            
+        Returns:
+            New capacity
+        """
+        active_count = np.sum(self.memmap['id'] > 0)
+        
+        if target_capacity is None:
+            # Default: active + 20% headroom, minimum 10000
+            target_capacity = max(int(active_count * 1.2), 10_000)
+        
+        if target_capacity < active_count:
+            logger.error(f"Cannot trim to {target_capacity}: would lose {active_count - target_capacity} active records")
+            raise ValueError(f"Target capacity {target_capacity} < active count {active_count}")
+        
+        if target_capacity >= self.capacity:
+            logger.debug(f"Target capacity {target_capacity} >= current {self.capacity}, skipping trim")
+            return self.capacity
+        
+        logger.info(f"Trimming array from {self.capacity} to {target_capacity} ({active_count} active records)")
+        
+        # Create new smaller array
+        new_array = np.zeros(target_capacity, dtype=CUSTOMER_DTYPE)
+        
+        # Copy active data (should be compacted at start after defrag)
+        active_mask = self.memmap['id'] > 0
+        active_indices = np.where(active_mask)[0]
+        
+        if len(active_indices) > 0:
+            # Copy all active records
+            new_array[:active_count] = self.memmap[active_mask]
+        
+        # Replace old array
+        self.memmap = new_array
+        self.capacity = target_capacity
+        
+        # Rebuild free stack
+        self.free_stack = list(range(active_count, target_capacity))
+        self._next_scan_idx = active_count
+        
+        logger.info(f"Trim complete: new capacity {self.capacity}, {len(self.free_stack)} free slots")
+        
+        return self.capacity
     

@@ -1,12 +1,15 @@
 # Railed - Rail Transport Simulation Framework
 
-A high-performance railway simulation framework using columnar customer data storage and object-oriented simulation entities.
+A high-performance railway simulation framework for modeling urban transit networks with realistic passenger flows, train operations, and network visualization.
 
-## Architecture
+## Features
 
-- **Customer Data**: Stored in NumPy memmap for high-throughput vectorized operations
-- **Simulation Objects**: In-memory OOP entities (Trains, Stations, Lines) for behavior and logic
-- **Snapshots**: PyArrow/Parquet for analytics and persistence
+- 🚄 **Realistic Train Operations**: Dynamic fleet management with bidirectional lines, capacity constraints, and automatic turnarounds
+- 👥 **Customer Simulation**: Poisson arrival processes with time-varying demand profiles and multi-leg journey planning
+- 🗺️ **Network Routing**: Dijkstra-based pathfinding with automatic transfer handling and path deduplication
+- 📊 **Analytics**: Real-time metrics collection with Parquet export for post-simulation analysis
+- 🎬 **Visualization**: Export MP4 videos showing network state evolution over time
+- ⚡ **High Performance**: Columnar storage using NumPy arrays for efficient large-scale simulations
 
 ## Installation
 
@@ -14,372 +17,381 @@ A high-performance railway simulation framework using columnar customer data sto
 pip install -r requirements.txt
 ```
 
-## Quick Start
+## Quick Start: Sydney Network Simulation
+
+Here's a complete example simulating the Sydney train network with realistic demand patterns and video visualization:
 
 ```python
+import sys
+import numpy as np
+import logging
+from pathlib import Path
+
 from rail_sim import (
-    MemmapAllocator,
+    MemoryAllocator,
     CustomerGenerator,
-    Station,
-    Line,
     Map,
-    SimulationLoop
+    SimulationLoop,
+    Visualizer,
+    GraphExporter,
+    precalculate
 )
 
-# Create memmap for customer data
-allocator = MemmapAllocator('data/passengers.dat', initial_capacity=100_000)
+# Define time-varying arrival rate with morning/evening peaks
+@precalculate(method="staircase", resolution=2000)
+def peaky_high_demand_arrival_rate(t):
+    """Rush hour demand pattern for busy stations"""
+    scale = 5
+    morn_aft_scale = 4
+    min_rate = 2
+    
+    power = -1/morn_aft_scale
+    f = lambda x: scale * x ** power * np.abs(np.sin(x)) + min_rate
+    time_of_day = (t % 86400) / 86400  # seconds in a day
+    return f(time_of_day * np.pi * 2)  # 2 peaks per day
 
-# Build network
-network = Map()
-station = Station(station_id=1, name="Central", line_codes=["T1"])
-network.add_station(station)
+def main():
+    # 1. Create memory allocator for customer data
+    allocator = MemoryAllocator()
+    
+    # 2. Build network topology
+    network = Map()
+    
+    # Import Sydney network structure (stations and lines)
+    from sydney_train import SydneyNetwork
+    sydney = SydneyNetwork()
+    
+    for station in sydney.stations:
+        network.add_station(station)
+    for line in sydney.lines:
+        network.add_line(line)
+    
+    print(f"Network loaded: {len(network.stations)} stations, {len(network.lines)} lines")
+    
+    # 3. Create customer generators for high-demand stations
+    generators = []
+    high_demand_stations = [1, 2, 3, 4, 5]  # Central, Town Hall, Wynyard, etc.
+    
+    for idx, station_id in enumerate(high_demand_stations):
+        gen = CustomerGenerator(
+            allocator=allocator,
+            station_id=station_id,
+            arrival_rate_profile=peaky_high_demand_arrival_rate,
+            seed=42 + idx
+        )
+        generators.append(gen)
+    
+    # 4. Create simulation starting at 6 AM
+    sim = SimulationLoop(
+        memmap_allocator=allocator,
+        map_network=network,
+        dt=1.0,  # 1 second per tick
+        snapshot_interval=7200,  # snapshot every 2 hours
+        log_level=logging.ERROR
+    )
+    
+    sim.current_time = 6 * 3600.0  # Start at 6 AM
+    
+    for gen in generators:
+        sim.add_customer_generator(gen)
+    
+    # 5. Enable visualization (captures 30 snapshots per second)
+    sim.enable_visualization(capture_rate=30)
+    
+    # 6. Run simulation for 12 hours
+    n_ticks = 3600 * 12
+    print(f"Running simulation for {n_ticks/3600:.1f} hours...")
+    sim.run(n_ticks=n_ticks)
+    
+    print(f"Simulation complete! Captured {len(sim.station_history)} snapshots")
+    
+    # 7. Render MP4 video
+    visualizer = Visualizer(
+        map_network=network,
+        fps=60,
+        resolution=(1920, 1080)
+    )
+    
+    visualizer.render_video(
+        station_history=sim.station_history,
+        output_path="video.mp4",
+        dt=sim.dt,
+        sim_start_time=6 * 3600.0
+    )
+    
+    print("✅ Video saved to: video.mp4")
+    
+    # 8. Export analytical graphs
+    graph_exporter = GraphExporter(sim)
+    graph_exporter.export_all_graphs(
+        output_dir="graphs/",
+        station_ids=high_demand_stations,
+        start_time=6 * 3600.0,
+        prefix="sydney_"
+    )
 
-# Create line with schedule
-line = Line(
-    line_id="T1",
-    line_code="T1",
-    station_list=[1, 2, 3],
-    time_between_stations=[120.0, 180.0],
-    schedule={'headway': 600, 'capacity': 800},
-    fleet_size=5
-)
-network.add_line(line)
-
-# Run simulation
-sim = SimulationLoop(allocator, network)
-sim.run(n_ticks=1000)
+if __name__ == "__main__":
+    main()
 ```
+
+**Run the example:**
+
+```bash
+cd examples
+python visualize_sydney.py
+```
+
+This will generate:
+- `video.mp4` - Animated visualization of the network over 12 simulated hours
+- `graphs/` - Statistical plots (wait times, occupancy, boarding rates, etc.)
+- Parquet snapshots for detailed analysis
+
+## Core Concepts
+
+### Customer Data Storage
+
+Customers are stored in efficient columnar format (NumPy array or memmap) with 13 fields per record:
+
+```python
+CUSTOMER_DTYPE = np.dtype([
+    ('id', 'u8'),                    # Unique customer ID
+    ('origin_station_id', 'i4'),     # Starting station
+    ('dest_station_id', 'i4'),       # Destination station
+    ('current_station_id', 'i4'),    # Current location
+    ('on_train_id', 'i4'),           # Train ID (if onboard)
+    ('state', 'u1'),                 # 0=waiting, 1=onboard, 2=arrived, 3=transfer
+    ('tap_on_ts', 'f8'),             # Board time
+    ('tap_off_ts', 'f8'),            # Alight time
+    ('spawn_ts', 'f8'),              # Arrival at origin time
+    ('path_id', 'i4'),               # Route identifier
+    ('total_wait_time', 'f8'),       # Cumulative wait time
+    ('total_travel_time', 'f8'),     # Cumulative travel time
+    ('movement_speed', 'f4')         # Movement speed
+])
+```
+
+### Network Architecture
+
+- **Map**: Network graph with stations and lines, handles pathfinding
+- **Station**: Waiting queues, passenger boarding/alighting logic, transfer management
+- **Line**: Route topology, travel times, owns TrainGenerator
+- **Train**: Movement, capacity, passenger management
+- **PathTable**: Caches computed routes to avoid redundant pathfinding
+
+### Simulation Flow
+
+Each simulation tick:
+
+1. **Customer Generation**: Spawn new passengers based on arrival rate profiles
+2. **Path Assignment**: Compute shortest paths and assign to customers
+3. **Train Spawning**: Generate trains based on schedule and headway
+4. **Train Movement**: Update train positions, handle arrivals at stations
+5. **Boarding/Alighting**: Transfer passengers between stations and trains
+6. **Metrics Collection**: Track wait times, occupancy, throughput
+7. **Snapshot**: Periodic export to Parquet for analysis
+
+## Architecture
+
+### Data Layer
+- **MemoryAllocator / MemmapAllocator**: Manages customer record storage with index pooling
+- **PathTable**: Deduplicates and caches routing paths using MD5 hashing
+
+### Entity Layer
+- **CustomerGenerator**: Poisson arrival process with configurable rate profiles
+- **Train**: In-memory object with timetable, capacity, onboard passenger list
+- **TrainGenerator**: Fleet manager handling train lifecycle (spawn, turnaround, pooling)
+- **Station**: Queue management, boarding eligibility filtering
+
+### Orchestration
+- **SimulationLoop**: Main coordinator executing the simulation tick by tick
+- **Visualizer**: Renders MP4 videos from captured station state history
+- **GraphExporter**: Exports matplotlib charts for post-simulation analysis
 
 ## Project Structure
 
 ```
-src/rail_sim/
-├── memmap_schema.py    # Customer data structure and allocator
-├── path_table.py       # Path storage and routing
-├── customer_gen.py     # Customer generation
+rail_sim/
+├── memory.py           # Customer data storage (memmap/in-memory)
+├── path_table.py       # Path caching and deduplication
+├── customer_gen.py     # Passenger arrival simulation
+├── arrival_rate_profile.py  # Demand profile functions
 ├── train.py            # Train movement and operations
-├── station.py          # Station queues and boarding
+├── station.py          # Station queues and boarding logic
 ├── train_gen.py        # Train spawning and fleet management
 ├── line.py             # Line topology and schedules
 ├── map.py              # Network graph and routing
-└── simulation.py       # Main simulation loop
+├── simulation.py       # Main simulation loop
+├── visualizer.py       # MP4 video rendering
+├── graph_exporter.py   # Statistical plot generation
+└── stats_utils.py      # Analytics utilities
 
 examples/
-└── simple_simulation.py  # Basic example
+├── visualize_sydney.py    # Full Sydney network example
+├── sydney_train.py        # Sydney network definition
+├── simple_simulation_v2.py # Basic examples
+└── graphs/                # Output directory for plots
 
 research/
-└── research.md          # Design documentation
+└── research.md            # Design documentation
 ```
 
-## Data Model
+## Advanced Features
 
-### Customer (memmap columns)
-- id, origin_station_id, dest_station_id, current_station_id
-- on_train_id, state (waiting/onboard/arrived/transferring)
-- tap_on_ts, tap_off_ts, spawn_ts
-- path_id (reference to PathTable)
-- total_wait_time, total_travel_time, movement_speed
+### Time-Varying Demand Profiles
 
-### Simulation Objects
-- **Train**: Movement, boarding, alighting, capacity
-- **Station**: Queues, platforms, transfers
-- **Line**: Topology, schedules, fleet management
-- **Map**: Network graph, routing
+Use the `@precalculate` decorator to optimize complex arrival rate functions:
 
-## Features
+```python
+from rail_sim import precalculate
+import numpy as np
 
-- ✅ Columnar customer storage with vectorized operations
-- ✅ Capacity-constrained boarding
-- ✅ Path-based routing with NetworkX
-- ✅ Fleet size management and train pooling
-- ✅ Direction reversal at terminals
-- ✅ PyArrow snapshot export for analytics
-- ✅ Per-tick metrics collection
-- ✅ Event-driven architecture ready
+@precalculate(method="staircase", resolution=2000)
+def rush_hour_profile(t):
+    """Morning and evening peaks"""
+    time_of_day = (t % 86400) / 86400  # Normalize to [0, 1]
+    hour = time_of_day * 24
+    
+    if 7 <= hour < 9 or 17 <= hour < 19:
+        return 5.0  # Peak rate
+    elif 9 <= hour < 17:
+        return 2.0  # Mid-day
+    else:
+        return 0.5  # Off-peak
+```
 
-## Performance
+### Custom Network Definitions
 
-- Handles 100k+ customers with minimal overhead
-- Vectorized state updates for waiting/boarding/alighting
-- Zero-copy memmap for cross-process access
-- Efficient path caching
+Build networks programmatically:
+
+```python
+from rail_sim import Station, Line
+
+# Define stations
+stations = [
+    Station(station_id=1, name="Central", line_codes=["T1", "T2"]),
+    Station(station_id=2, name="Town Hall", line_codes=["T1"]),
+    Station(station_id=3, name="Wynyard", line_codes=["T1", "T2"])
+]
+
+# Define line with bidirectional service
+line = Line(
+    line_id="T1",
+    line_code="T1",
+    station_list=[1, 2, 3],
+    time_between_stations=[120.0, 180.0],  # seconds
+    schedule={
+        'headway': 300,  # 5 minutes between trains
+        'service_start': 5 * 3600,  # 5 AM
+        'service_end': 23 * 3600,  # 11 PM
+        'capacity': 800
+    },
+    fleet_size=10,
+    bidirectional=True
+)
+```
+
+### Metrics and Analysis
+
+Access real-time metrics during simulation:
+
+```python
+sim.run(n_ticks=3600)
+
+# Get latest metrics
+metrics = sim.metrics_history[-1]
+print(f"Active passengers: {metrics.active_customers}")
+print(f"Boarding rate: {metrics.boarding_count / sim.dt:.2f}/sec")
+print(f"Avg wait time: {metrics.avg_waiting_time:.1f}s")
+print(f"Train utilization: {metrics.avg_train_occupancy:.1%}")
+
+# Export all snapshots to Parquet
+import pyarrow.parquet as pq
+for i, snapshot in enumerate(sim.snapshots):
+    pq.write_table(snapshot, f"snapshot_{i}.parquet")
+```
+
+### Visualization Options
+
+Customize video output:
+
+```python
+from rail_sim import Visualizer
+
+visualizer = Visualizer(
+    map_network=network,
+    fps=60,  # Video frame rate
+    resolution=(1920, 1080),  # Full HD
+    show_station_names=True,
+    show_line_colors=True,
+    show_train_ids=False
+)
+
+visualizer.render_video(
+    station_history=sim.station_history,
+    output_path="simulation.mp4",
+    dt=sim.dt,
+    sim_start_time=6 * 3600.0,
+    playback_speed=60  # 60x real-time
+)
+```
+
+### Statistical Graphs
+
+Export comprehensive analytics:
+
+```python
+from rail_sim import GraphExporter
+
+exporter = GraphExporter(sim)
+
+# Export all standard graphs
+exporter.export_all_graphs(
+    output_dir="analysis/",
+    station_ids=[1, 2, 3],  # Highlight specific stations
+    start_time=6 * 3600.0,
+    prefix="morning_rush_"
+)
+
+# Or export individual graphs
+exporter.export_wait_time_graph("wait_times.png", station_ids=[1, 2])
+exporter.export_occupancy_graph("occupancy.png")
+exporter.export_customer_state_graph("states.png")
+```
+
+## Performance Considerations
+
+- **MemoryAllocator vs MemmapAllocator**: Use `MemoryAllocator` for faster in-memory simulations (up to 2x faster), `MemmapAllocator` for large simulations requiring disk persistence
+- **Visualization capture rate**: Lower capture rates (10-30 fps) reduce memory usage during simulation
+- **Snapshot interval**: Adjust based on analytics needs vs storage constraints
+- **Path table**: Automatically caches routes to avoid redundant pathfinding
+
+## Output Files
+
+**During Simulation:**
+- `snapshots/snapshot_*.parquet` - Periodic customer state exports
+- `pipeline_log.txt` - Simulation log (if logging enabled)
+
+**After Visualization:**
+- `video.mp4` - Animated network visualization
+- `graphs/*.png` - Statistical plots (wait times, occupancy, boarding rates, etc.)
+
+## API Reference
+
+See [rail_sim/README.md](rail_sim/README.md) for detailed class diagrams and API documentation.
+
+## Examples
+
+Browse the `examples/` directory for more use cases:
+- `simple_simulation_v2.py` - Minimal example with 3 stations
+- `sydney_simulation_v3.py` - Large-scale network simulation
+- `profile_sim.py` - Performance profiling
+- `validating_precalc.py` - Arrival rate function testing
 
 ## Development
 
-See `research/research.md` for detailed architecture and design decisions.
+See `research/research.md` for architectural decisions and design rationale.
 
 ## License
 
-MIT - Rail System Simulator for Python
-
-A Python package for simulating passenger rail systems. Define lines, schedules, and demand—the simulator handles the rest.
-
-## Philosophy
-
-**You define:** Train lines, train schedules, passenger demand  
-**Simulator handles:** Stations, network graph, passenger objects, metrics, visualization
-
-## Features
-
-- Node-based rail network built automatically from line definitions
-- Time-stepped passenger movement simulation
-- Identify bottlenecks, crowding, and service gaps
-- Export metrics and generate visualizations
-
-## User-Defined Inputs
-
-### 1. Train Lines
-
-Define routes with stations and travel times:
-
-```python
-Line(
-    name="T1",
-    stops=["Central", "Redfern", "Town Hall", "Wynyard"],
-    travel_times=[3, 2, 4]  # minutes between consecutive stops
-)
-```
-
-### 2. Train Schedules
-
-Define when trains run on each line:
-
-```python
-TrainSchedule(
-    line="T1",
-    frequency=10,  # train every 10 minutes
-    capacity=200,  # passengers per train
-    start_time=0,  # simulation start
-    end_time=120   # stop generating trains after 120 min
-)
-
-# OR specify exact departure times
-TrainSchedule(
-    line="T1",
-    departures=[0, 8, 18, 30, 45, 60],  # specific times in minutes
-    capacity=200
-)
-```
-
-### 3. Passenger Demand
-
-Define origin-destination flows with time-varying rates:
-
-```python
-PassengerDemand(
-    origin="Central",
-    destination="Wynyard",
-    rate=lambda t: 100 if 7 <= t < 9 else 30  # passengers/hour by time
-)
-
-# OR use preset patterns
-PassengerDemand(
-    origin="Redfern",
-    destination="Town Hall",
-    pattern="rush_hour",  # built-in patterns
-    peak_rate=150
-)
-```
-
-### 4. Passenger Characteristics (Optional)
-
-Customize passenger movement if needed:
-
-```python
-PassengerProfile(
-    name="default",
-    speed_mps=1.4,  # average walking speed
-    boarding_time=2  # seconds per passenger
-)
-
-PassengerProfile(
-    name="mobility_impaired",
-    speed_mps=0.8,
-    boarding_time=5,
-    proportion=0.1  # 10% of passengers
-)
-```
-
-## Simulator Auto-Generates
-
-- **Stations**: Created automatically from line definitions
-- **Network**: Graph built from all lines, including transfer points
-- **Passengers**: Spawned based on demand, assigned IDs, origin/dest
-- **Trains**: Created per schedule with capacity and position tracking
-- **Queues**: Managed at each station per line/direction
-- **Metrics**: Journey time, wait time, crowding, left-behind counts
-
-## Complete Example
-
-```python
-from raily import Line, TrainSchedule, PassengerDemand, Simulator
-
-# Define lines
-t1 = Line(
-    name="T1",
-    stops=["Central", "Redfern", "Town Hall", "Wynyard"],
-    travel_times=[3, 2, 4]
-)
-
-t2 = Line(
-    name="T2", 
-    stops=["Central", "Museum", "St James", "Circular Quay"],
-    travel_times=[2, 3, 3]
-)
-
-# Define train schedules
-schedule_t1 = TrainSchedule(
-    line="T1",
-    frequency=10,  # every 10 min
-    capacity=200,
-    start_time=0,
-    end_time=120
-)
-
-schedule_t2 = TrainSchedule(
-    line="T2",
-    frequency=15,  # every 15 min
-    capacity=180,
-    start_time=0,
-    end_time=120
-)
-
-# Define passenger demand
-demand1 = PassengerDemand(
-    origin="Central",
-    destination="Wynyard",
-    rate=lambda t: 100 if 7 <= t < 9 else 30
-)
-
-demand2 = PassengerDemand(
-    origin="Redfern", 
-    destination="Circular Quay",
-    rate=lambda t: 50 if 7 <= t < 9 else 15
-)
-
-# Create and run simulator
-sim = Simulator(
-    lines=[t1, t2],
-    schedules=[schedule_t1, schedule_t2],
-    demands=[demand1, demand2],
-    duration=120,  # simulate 2 hours
-    time_step=1    # 1 minute resolution
-)
-
-results = sim.run()
-
-# Access results
-print(f"Avg journey time: {results.avg_journey_time:.1f} min")
-print(f"Avg wait time: {results.avg_wait_time:.1f} min")
-print(f"Max crowding: {results.max_occupancy:.0f}%")
-print(f"Passengers left behind: {results.left_behind}")
-print(f"Total passengers served: {results.passengers_served}")
-
-# Export results
-results.to_csv("simulation_results.csv")
-results.plot_crowding()  # matplotlib chart
-results.plot_wait_times_by_station()
-```
-
-## What Happens During Simulation
-
-The simulator runs a time-stepped loop:
-
-**Each time step (e.g., 1 minute):**
-1. **Generate passengers** based on demand functions
-2. **Move trains** along their lines according to schedules
-3. **Alight passengers** who reached their destination
-4. **Board passengers** from station queues (up to train capacity)
-5. **Handle transfers** at interchange stations
-6. **Record metrics** (wait times, occupancy, etc.)
-
-**After simulation:**
-- Aggregate statistics (averages, percentiles, totals)
-- Export detailed logs (per-passenger, per-train)
-- Generate visualizations (crowding heat maps, time series)
-
-## Advanced Options
-
-```python
-sim = Simulator(
-    lines=[t1, t2],
-    schedules=[schedule_t1, schedule_t2],
-    demands=[demand1, demand2],
-    duration=120,
-    time_step=0.5,  # 30-second resolution for more detail
-    transfer_time=3,  # minutes to transfer between lines (default: 2)
-    passenger_profiles=[default_profile, impaired_profile],  # optional
-    random_seed=42  # reproducible results
-)
-```
-
-## Output Metrics
-
-**Journey Metrics:**
-- Average/median/max journey time
-- Average/median/max wait time at platform
-- Average/median/max in-vehicle time
-- Journey time by origin-destination pair
-
-**Service Metrics:**
-- Passengers served vs. left behind
-- Train occupancy (avg/max per line, per time period)
-- Station crowding (queue length over time)
-- Service reliability (% who boarded first train)
-
-**Transfer Metrics:**
-- Transfer time statistics
-- Most common transfer points
-- Missed connection counts
-
-## Visualization
-
-```python
-results.plot_crowding()  # Train occupancy over time
-results.plot_wait_times_by_station()  # Box plots per station
-results.plot_journey_times()  # Histogram
-results.plot_network()  # Network graph with flow indicators
-results.heatmap_od_matrix()  # Origin-destination demand
-```
-
-## Export Formats
-
-- **CSV**: Detailed per-passenger logs, per-train logs, aggregated metrics
-- **JSON**: Full simulation state and results
-- **PNG/PDF**: Matplotlib charts
-
-## Deliverables
-
-- Python package installable via `pip install raily`
-- Clean API requiring only lines, schedules, and demand
-- Time-stepped simulation engine
-- Comprehensive metrics and statistics
-- Built-in visualizations
-- Export to CSV/JSON
-- Documentation and example notebooks
-
-## Installation
-
-```bash
-pip install raily
-```
-
-## Quick Start
-
-```python
-from raily import Line, TrainSchedule, PassengerDemand, Simulator
-
-# Define your network
-lines = [Line("T1", ["A", "B", "C"], [5, 5])]
-schedules = [TrainSchedule("T1", frequency=10, capacity=100)]
-demands = [PassengerDemand("A", "C", rate=lambda t: 50)]
-
-# Run simulation
-sim = Simulator(lines, schedules, demands, duration=60)
-results = sim.run()
-
-# View results
-print(results.summary())
-results.plot_crowding()
-```
+MIT
 
