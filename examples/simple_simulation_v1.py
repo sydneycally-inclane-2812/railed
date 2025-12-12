@@ -106,16 +106,49 @@ def main():
     sim.add_customer_generator(gen_central)
     sim.add_customer_generator(gen_redfern)
     
-    # 7. Run simulation
+    # 7. Run simulation for 30 days, collect daily average waiting times
     print(f"Starting simulation at time {sim.current_time} (hour {sim.current_time/3600})")
     print(f"Service hours: {line_t1.train_generator.schedule_policy['service_hours']}")
-    
-    
-    print("\n=== Running full simulation ===")
-    sim.run(n_ticks=3000)  # Run remaining ticks
-    
+
+    n_days = 30
+    seconds_per_day = 24 * 3600
+    daily_waiting_times = []
+
+    for day in range(n_days):
+        print(f"\n=== Running simulation for day {day+1} ===")
+        sim.run(n_ticks=seconds_per_day)
+        # Assume sim.metrics_history[-1] contains 'avg_waiting_time' (adjust if needed)
+        metrics = sim.metrics_history[-1]
+        avg_wait = metrics.get('avg_waiting_time', None)
+        if avg_wait is not None:
+            daily_waiting_times.append(avg_wait)
+        else:
+            print("Warning: 'avg_waiting_time' not found in metrics.")
+
     print("\nSimulation complete!")
-    print(f"Final metrics: {sim.metrics_history[-1]}")
+    print(f"Daily average waiting times: {daily_waiting_times}")
+
+    # Bootstrap sampling on daily average waiting times
+    if daily_waiting_times:
+        # Custom bootstrap implementation
+        n_samples = 30
+        stats_arr = []
+        n = len(daily_waiting_times)
+        orig_stat = np.mean(daily_waiting_times)
+        for _ in range(n_samples):
+            sample = np.random.choice(daily_waiting_times, size=n, replace=True)
+            stats_arr.append(np.mean(sample))
+        stats_arr = np.array(stats_arr)
+        boot_mean = np.mean(stats_arr)
+        bias = boot_mean - orig_stat
+        std_err = np.std(stats_arr)
+        ci = 95
+        lower = np.percentile(stats_arr, (100 - ci) / 2)
+        upper = np.percentile(stats_arr, 100 - (100 - ci) / 2)
+        print(f"\nBootstrap mean: {boot_mean:.3f}")
+        print(f"Bootstrap bias: {bias:.3f}")
+        print(f"Bootstrap std error: {std_err:.3f}")
+        print(f"Bootstrap 95% CI: {lower:.3f} - {upper:.3f}")
 
 if __name__ == "__main__":
     main()

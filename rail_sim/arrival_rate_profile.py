@@ -101,17 +101,13 @@ def random_peak_hour(
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    # Precompute a probability distribution over hours [0, period)
-    hours = np.linspace(0, period, 1000, endpoint=False)
-    probs = np.exp(-0.5 * ((hours - peak_hour) / spread) ** 2)
-    probs /= probs.sum()  # Normalize
-
     def sample_hour():
-        # Sample an index, then convert to hour
-        idx = np.random.choice(len(hours), p=probs)
-        return hours[idx]
+        hour = np.random.normal(loc=peak_hour, scale=spread)
+        hour = hour % period
+        return hour
 
     return sample_hour
+
 
 def random_multi_peak_hour(
     peak_hours: list,
@@ -121,8 +117,8 @@ def random_multi_peak_hour(
     random_seed: int = None
 ):
     """
-    Returns a function that samples a random hour of the day,
-    with higher probability near multiple specified peak_hours using a mixture of Gaussians.
+    Returns a function that samples a random hour of the day using np.random.normal,
+    with higher probability near multiple specified peak_hours (mixture of Gaussians).
 
     Args:
         peak_hours: list of hours (e.g., [8, 17]) for peaks
@@ -142,16 +138,15 @@ def random_multi_peak_hour(
         spreads = [1.0] * n_peaks
     if weights is None:
         weights = [1.0] * n_peaks
-
-    hours = np.linspace(0, period, 1000, endpoint=False)
-    probs = np.zeros_like(hours)
-    for peak, spread, weight in zip(peak_hours, spreads, weights):
-        probs += weight * np.exp(-0.5 * ((hours - peak) / spread) ** 2)
-    probs /= probs.sum()  # Normalize
+    weights = np.array(weights) / np.sum(weights)  # Normalize weights
 
     def sample_hour():
-        idx = np.random.choice(len(hours), p=probs)
-        return hours[idx]
+        # Choose which peak to sample from
+        peak_idx = np.random.choice(n_peaks, p=weights)
+        hour = np.random.normal(loc=peak_hours[peak_idx], scale=spreads[peak_idx])
+        # Wrap around the period (e.g., 24 hours)
+        hour = hour % period
+        return hour
 
     return sample_hour
 
@@ -163,5 +158,5 @@ if __name__ == "__main__":
     plt.hist(samples, bins=24, range=(0,24), density=True, alpha=0.7)
     plt.xlabel("Hour of Day")
     plt.ylabel("Probability Density")
-    plt.title("Random Sampling with Peaks at 8am & 5pm")
+    plt.title("Random Sampling  with Peaks at 8am & 5pm")
     plt.show()

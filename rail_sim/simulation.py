@@ -399,7 +399,7 @@ class SimulationLoop:
 			})
 			
 			# Write snapshot
-			snapshot_dir = Path('e:/railed/snapshots')
+			snapshot_dir = Path('./snapshots')
 			snapshot_dir.mkdir(parents=True, exist_ok=True)
 			
 			filename = snapshot_dir / f'snapshot_tick_{self.current_tick}.parquet'
